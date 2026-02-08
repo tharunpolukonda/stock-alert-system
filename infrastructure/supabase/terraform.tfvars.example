@@ -1,0 +1,8 @@
+# Copy this file to terraform.tfvars and fill in your actual values
+# DO NOT commit terraform.tfvars to version control!
+
+supabase_access_token  = "your-access-token-here"
+supabase_project_ref   = "your-project-ref-here"
+supabase_url          = "https://your-project.supabase.co"
+supabase_anon_key     = "your-anon-key-here"
+supabase_service_key  = "your-service-key-here"
