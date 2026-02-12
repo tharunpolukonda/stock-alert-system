@@ -21,6 +21,13 @@ export default function Dashboard() {
     const [sectors, setSectors] = useState<any[]>([])
     const [selectedSector, setSelectedSector] = useState<string>('')
     const [editingAlert, setEditingAlert] = useState<any>(null)
+    const [portfolioAnalytics, setPortfolioAnalytics] = useState({
+        totalInvestment: 0,
+        currentValue: 0,
+        totalGain: 0,
+        gainPercentage: 0
+    })
+    const [fetchingPrices, setFetchingPrices] = useState(false)
 
     const supabase = createClient()
     const router = useRouter()
@@ -114,12 +121,71 @@ export default function Dashboard() {
         }
     }
 
+    const calculatePortfolioAnalytics = async () => {
+        const portfolioStocks = allStocks.filter(s => s.is_portfolio && s.shares_count)
+
+        if (portfolioStocks.length === 0) {
+            setPortfolioAnalytics({
+                totalInvestment: 0,
+                currentValue: 0,
+                totalGain: 0,
+                gainPercentage: 0
+            })
+            return
+        }
+
+        setFetchingPrices(true)
+        let totalInvested = 0
+        let totalCurrent = 0
+
+        try {
+            for (const stock of portfolioStocks) {
+                const invested = stock.current_price * stock.shares_count
+                totalInvested += invested
+
+                // Fetch current price
+                try {
+                    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/search`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ company_name: stock.company_name }),
+                    })
+                    const result = await response.json()
+                    if (result.success) {
+                        totalCurrent += result.price * stock.shares_count
+                    } else {
+                        // If fetch fails, use baseline price
+                        totalCurrent += invested
+                    }
+                } catch (error) {
+                    console.error(`Failed to fetch price for ${stock.company_name}`, error)
+                    totalCurrent += invested
+                }
+            }
+
+            const gain = totalCurrent - totalInvested
+            const gainPercent = totalInvested > 0 ? (gain / totalInvested) * 100 : 0
+
+            setPortfolioAnalytics({
+                totalInvestment: totalInvested,
+                currentValue: totalCurrent,
+                totalGain: gain,
+                gainPercentage: gainPercent
+            })
+        } catch (error) {
+            console.error('Error calculating portfolio analytics:', error)
+        } finally {
+            setFetchingPrices(false)
+        }
+    }
+
     useEffect(() => {
         fetchSectors()
     }, [])
 
     useEffect(() => {
         filterStocks(allStocks, selectedSector)
+        calculatePortfolioAnalytics()
     }, [selectedSector, allStocks])
 
     const handleSignOut = async () => {
@@ -275,11 +341,12 @@ export default function Dashboard() {
                         <select
                             value={selectedSector}
                             onChange={(e) => setSelectedSector(e.target.value)}
-                            className="rounded-full border border-white/10 bg-white/5 px-4 py-2 font-medium text-white transition-colors hover:bg-white/10"
+                            className="rounded-full border border-white/10 bg-black px-4 py-2 font-medium text-white transition-colors hover:bg-white/10"
+                            style={{ colorScheme: 'dark' }}
                         >
-                            <option value="">Portfolio Stocks</option>
+                            <option value="" className="bg-black text-white">Portfolio Stocks</option>
                             {sectors.map((sector) => (
-                                <option key={sector.id} value={sector.id}>
+                                <option key={sector.id} value={sector.id} className="bg-black text-white">
                                     {sector.name}
                                 </option>
                             ))}
@@ -313,6 +380,41 @@ export default function Dashboard() {
                         </button>
                     </div>
                 </div>
+
+                {/* Portfolio Analytics */}
+                {!selectedSector && allStocks.filter(s => s.is_portfolio).length > 0 && (
+                    <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                        <div className="rounded-xl border border-white/10 bg-gradient-to-br from-blue-500/10 to-blue-600/5 p-6 backdrop-blur-md">
+                            <p className="text-sm text-gray-400 mb-1">Total Investment</p>
+                            <p className="text-2xl font-bold text-white">₹{portfolioAnalytics.totalInvestment.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</p>
+                        </div>
+                        <div className="rounded-xl border border-white/10 bg-gradient-to-br from-purple-500/10 to-purple-600/5 p-6 backdrop-blur-md">
+                            <p className="text-sm text-gray-400 mb-1">Current Value</p>
+                            <p className="text-2xl font-bold text-white">₹{portfolioAnalytics.currentValue.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</p>
+                            {fetchingPrices && <p className="text-xs text-gray-500 mt-1">Updating...</p>}
+                        </div>
+                        <div className={`rounded-xl border border-white/10 p-6 backdrop-blur-md ${portfolioAnalytics.totalGain >= 0
+                                ? 'bg-gradient-to-br from-green-500/10 to-green-600/5'
+                                : 'bg-gradient-to-br from-red-500/10 to-red-600/5'
+                            }`}>
+                            <p className="text-sm text-gray-400 mb-1">Total Gain/Loss</p>
+                            <p className={`text-2xl font-bold ${portfolioAnalytics.totalGain >= 0 ? 'text-green-400' : 'text-red-400'
+                                }`}>
+                                {portfolioAnalytics.totalGain >= 0 ? '+' : ''}₹{portfolioAnalytics.totalGain.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                            </p>
+                        </div>
+                        <div className={`rounded-xl border border-white/10 p-6 backdrop-blur-md ${portfolioAnalytics.gainPercentage >= 0
+                                ? 'bg-gradient-to-br from-green-500/10 to-green-600/5'
+                                : 'bg-gradient-to-br from-red-500/10 to-red-600/5'
+                            }`}>
+                            <p className="text-sm text-gray-400 mb-1">Gain/Loss %</p>
+                            <p className={`text-2xl font-bold ${portfolioAnalytics.gainPercentage >= 0 ? 'text-green-400' : 'text-red-400'
+                                }`}>
+                                {portfolioAnalytics.gainPercentage >= 0 ? '+' : ''}{portfolioAnalytics.gainPercentage.toFixed(2)}%
+                            </p>
+                        </div>
+                    </div>
+                )}
 
                 {/* Search Result Preview */}
                 {searchResult && !showAddModal && (

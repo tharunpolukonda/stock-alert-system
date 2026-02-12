@@ -168,12 +168,13 @@ export function AlertForm({
                 <select
                     value={sectorId}
                     onChange={(e) => setSectorId(e.target.value)}
-                    className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white focus:border-blue-500 focus:outline-none"
+                    className="w-full rounded-md border border-white/10 bg-black px-3 py-2 text-white focus:border-blue-500 focus:outline-none"
+                    style={{ colorScheme: 'dark' }}
                     required
                 >
-                    <option value="">Select a sector</option>
+                    <option value="" className="bg-black text-white">Select a sector</option>
                     {sectors.map((sector) => (
-                        <option key={sector.id} value={sector.id}>
+                        <option key={sector.id} value={sector.id} className="bg-black text-white">
                             {sector.name}
                         </option>
                     ))}
