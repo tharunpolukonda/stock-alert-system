@@ -15,12 +15,15 @@ interface StockCardProps {
         last_updated?: string
         gain_threshold?: number
         loss_threshold?: number
+        is_portfolio?: boolean
+        shares_count?: number
+        sector_name?: string
     }
     onDelete?: (id: string) => void
-    onEditAlert?: (id: string) => void
+    onEdit?: (id: string) => void
 }
 
-export function StockCard({ stock, onDelete, onEditAlert }: StockCardProps) {
+export function StockCard({ stock, onDelete, onEdit }: StockCardProps) {
     const [isHovered, setIsHovered] = useState(false)
     const [loadingPrice, setLoadingPrice] = useState(false)
     const [livePrice, setLivePrice] = useState<number | null>(null)
@@ -61,9 +64,22 @@ export function StockCard({ stock, onDelete, onEditAlert }: StockCardProps) {
             onMouseLeave={() => setIsHovered(false)}
         >
             <div className="flex items-start justify-between">
-                <div>
-                    <h3 className="text-lg font-semibold text-white truncate max-w-[180px]">{stock.company_name}</h3>
+                <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                        <h3 className="text-lg font-semibold text-white truncate max-w-[180px]">{stock.company_name}</h3>
+                        {stock.is_portfolio && (
+                            <span className="rounded-full bg-blue-500/20 px-2 py-0.5 text-xs font-medium text-blue-400">
+                                Portfolio
+                            </span>
+                        )}
+                    </div>
                     <p className="text-sm text-gray-400">{stock.symbol}</p>
+                    {stock.sector_name && (
+                        <p className="text-xs text-gray-500 mt-1">Sector: {stock.sector_name}</p>
+                    )}
+                    {stock.is_portfolio && stock.shares_count && (
+                        <p className="text-xs text-blue-400 mt-1">Shares: {stock.shares_count}</p>
+                    )}
                 </div>
                 <div className={cn(
                     "flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium",
@@ -137,7 +153,7 @@ export function StockCard({ stock, onDelete, onEditAlert }: StockCardProps) {
 
             <div className="absolute top-4 right-4 flex gap-2 opacity-0 transition-opacity group-hover:opacity-100">
                 <button
-                    onClick={() => onEditAlert?.(stock.id)}
+                    onClick={() => onEdit?.(stock.id)}
                     className="rounded-full bg-white/10 p-2 text-white hover:bg-white/20"
                     title="Edit Alert"
                 >

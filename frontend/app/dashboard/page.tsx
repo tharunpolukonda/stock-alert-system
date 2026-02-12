@@ -6,15 +6,21 @@ import { useRouter } from 'next/navigation'
 import { StockCard } from '@/components/StockCard'
 import { SearchBar } from '@/components/SearchBar'
 import { AlertForm } from '@/components/AlertForm'
-import { Plus, LogOut, LayoutDashboard, Bell, Loader2, X } from 'lucide-react'
+import { SectorModal } from '@/components/SectorModal'
+import { Plus, LogOut, LayoutDashboard, Bell, Loader2, X, FolderPlus } from 'lucide-react'
 
 export default function Dashboard() {
     const [user, setUser] = useState<any>(null)
     const [stocks, setStocks] = useState<any[]>([])
+    const [allStocks, setAllStocks] = useState<any[]>([])
     const [loading, setLoading] = useState(true)
     const [showAddModal, setShowAddModal] = useState(false)
+    const [showSectorModal, setShowSectorModal] = useState(false)
     const [selectedStockId, setSelectedStockId] = useState<string | null>(null)
     const [searchResult, setSearchResult] = useState<any>(null)
+    const [sectors, setSectors] = useState<any[]>([])
+    const [selectedSector, setSelectedSector] = useState<string>('')
+    const [editingAlert, setEditingAlert] = useState<any>(null)
 
     const supabase = createClient()
     const router = useRouter()
@@ -34,40 +40,48 @@ export default function Dashboard() {
 
     const fetchStocks = async (userId: string) => {
         try {
-            // In a real app, join with alerts table to get active alerts
-            // For now, we fetch alerts which contain stock info
             const { data, error } = await supabase
                 .from('user_alerts')
                 .select(`
-          id,
-          baseline_price,
-          gain_threshold_percent,
-          loss_threshold_percent,
-          is_active,
-          stock:stocks (
-            id,
-            company_name,
-            symbol
-          )
-        `)
+                    id,
+                    baseline_price,
+                    gain_threshold_percent,
+                    loss_threshold_percent,
+                    is_active,
+                    is_portfolio,
+                    shares_count,
+                    stock:stocks (
+                        id,
+                        company_name,
+                        symbol,
+                        sector:sectors (
+                            id,
+                            name
+                        )
+                    )
+                `)
                 .eq('user_id', userId)
 
             if (error) throw error
 
             if (data) {
-                // Transform data for StockCard
                 const formattedStocks = data.map((alert: any) => ({
-                    id: alert.id, // Alert ID (for deletion)
-                    stock_id: alert.stock.id, // Stock ID (for cascade deletion)
+                    id: alert.id,
+                    stock_id: alert.stock.id,
                     company_name: alert.stock.company_name,
                     symbol: alert.stock.symbol || 'NSE',
-                    current_price: alert.baseline_price, // Initially show baseline, track button gets live
-                    price_change: 0, // Placeholder
+                    current_price: alert.baseline_price,
+                    price_change: 0,
                     last_updated: new Date().toISOString(),
                     gain_threshold: alert.gain_threshold_percent,
-                    loss_threshold: alert.loss_threshold_percent
+                    loss_threshold: alert.loss_threshold_percent,
+                    is_portfolio: alert.is_portfolio,
+                    shares_count: alert.shares_count,
+                    sector_id: alert.stock.sector?.id,
+                    sector_name: alert.stock.sector?.name
                 }))
-                setStocks(formattedStocks)
+                setAllStocks(formattedStocks)
+                filterStocks(formattedStocks, selectedSector)
             }
         } catch (error) {
             console.error('Error fetching stocks:', error)
@@ -75,6 +89,38 @@ export default function Dashboard() {
             setLoading(false)
         }
     }
+
+    const fetchSectors = async () => {
+        try {
+            const { data, error } = await supabase
+                .from('sectors')
+                .select('id, name')
+                .order('name', { ascending: true })
+
+            if (error) throw error
+            setSectors(data || [])
+        } catch (error) {
+            console.error('Error fetching sectors:', error)
+        }
+    }
+
+    const filterStocks = (stocksList: any[], sectorId: string) => {
+        if (!sectorId) {
+            // Default: show only portfolio stocks
+            setStocks(stocksList.filter(s => s.is_portfolio))
+        } else {
+            // Show all stocks in selected sector
+            setStocks(stocksList.filter(s => s.sector_id === sectorId))
+        }
+    }
+
+    useEffect(() => {
+        fetchSectors()
+    }, [])
+
+    useEffect(() => {
+        filterStocks(allStocks, selectedSector)
+    }, [selectedSector, allStocks])
 
     const handleSignOut = async () => {
         await supabase.auth.signOut()
@@ -94,47 +140,81 @@ export default function Dashboard() {
         if (!user) return
 
         try {
-            // 1. Ensure stock exists in stocks table
             let stockId = alertData.stock_id
             let stockName = alertData.company_name
 
-            // If we don't have an ID but have a name (from search), create/get the stock
+            // Create or update stock with sector
             if (!stockId && stockName) {
                 const { data: stockData, error: stockError } = await supabase
                     .from('stocks')
                     .upsert({
                         company_name: stockName,
-                        symbol: 'NSE', // Default
-                        current_price: alertData.baseline_price
+                        symbol: 'NSE',
+                        current_price: alertData.baseline_price,
+                        sector_id: alertData.sector_id
                     }, { onConflict: 'company_name' })
                     .select()
                     .single()
 
                 if (stockError) throw stockError
                 stockId = stockData.id
+            } else if (stockId) {
+                // Update existing stock's sector
+                await supabase
+                    .from('stocks')
+                    .update({ sector_id: alertData.sector_id })
+                    .eq('id', stockId)
             }
 
-            // 2. Create Alert
-            const { error: alertError } = await supabase
-                .from('user_alerts')
-                .insert({
-                    user_id: user.id,
-                    stock_id: stockId,
-                    baseline_price: searchResult ? searchResult.price : alertData.baseline_price,
-                    gain_threshold_percent: alertData.gain_threshold_percent,
-                    loss_threshold_percent: alertData.loss_threshold_percent
-                })
+            // Create or update alert
+            if (editingAlert) {
+                const { error: updateError } = await supabase
+                    .from('user_alerts')
+                    .update({
+                        baseline_price: alertData.baseline_price,
+                        gain_threshold_percent: alertData.gain_threshold_percent,
+                        loss_threshold_percent: alertData.loss_threshold_percent,
+                        is_portfolio: alertData.is_portfolio,
+                        shares_count: alertData.shares_count,
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq('id', editingAlert.id)
+                    .eq('user_id', user.id)
 
-            if (alertError) throw alertError
+                if (updateError) throw updateError
+            } else {
+                const { error: alertError } = await supabase
+                    .from('user_alerts')
+                    .insert({
+                        user_id: user.id,
+                        stock_id: stockId,
+                        baseline_price: searchResult ? searchResult.price : alertData.baseline_price,
+                        gain_threshold_percent: alertData.gain_threshold_percent,
+                        loss_threshold_percent: alertData.loss_threshold_percent,
+                        is_portfolio: alertData.is_portfolio,
+                        shares_count: alertData.shares_count
+                    })
 
-            // Refresh list
+                if (alertError) throw alertError
+            }
+
+            // Refresh
             setShowAddModal(false)
             setSearchResult(null)
+            setEditingAlert(null)
             fetchStocks(user.id)
 
         } catch (error: any) {
             console.error('Error saving alert:', error)
             alert(`Error saving alert: ${error.message}`)
+        }
+    }
+
+    const handleEditAlert = (alertId: string) => {
+        const alert = allStocks.find(s => s.id === alertId)
+        if (alert) {
+            setEditingAlert(alert)
+            setShowAddModal(true)
         }
     }
 
@@ -192,6 +272,18 @@ export default function Dashboard() {
                     </div>
 
                     <div className="flex w-full flex-col gap-4 md:w-auto md:flex-row">
+                        <select
+                            value={selectedSector}
+                            onChange={(e) => setSelectedSector(e.target.value)}
+                            className="rounded-full border border-white/10 bg-white/5 px-4 py-2 font-medium text-white transition-colors hover:bg-white/10"
+                        >
+                            <option value="">Portfolio Stocks</option>
+                            {sectors.map((sector) => (
+                                <option key={sector.id} value={sector.id}>
+                                    {sector.name}
+                                </option>
+                            ))}
+                        </select>
                         <SearchBar onSearchResult={handleSearchResult} />
                         <button
                             onClick={() => fetchStocks(user.id)}
@@ -202,8 +294,16 @@ export default function Dashboard() {
                             Refresh
                         </button>
                         <button
+                            onClick={() => setShowSectorModal(true)}
+                            className="flex items-center justify-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 font-medium text-white transition-colors hover:bg-white/10"
+                        >
+                            <FolderPlus className="h-4 w-4" />
+                            Add Sector
+                        </button>
+                        <button
                             onClick={() => {
                                 setSearchResult(null)
+                                setEditingAlert(null)
                                 setShowAddModal(true)
                             }}
                             className="flex items-center justify-center gap-2 rounded-full bg-blue-600 px-4 py-2 font-medium text-white transition-colors hover:bg-blue-700"
@@ -253,12 +353,10 @@ export default function Dashboard() {
                             <StockCard
                                 key={stock.id}
                                 stock={stock}
+                                onEdit={handleEditAlert}
                                 onDelete={async (id) => {
-                                    // 1. Delete ALERT
                                     const { error: alertError } = await supabase.from('user_alerts').delete().eq('id', id)
 
-                                    // 2. Delete STOCK (using stock_id stored in the stock object)
-                                    // Note: 'stock' variable is available in this closure
                                     if (!alertError && stock.stock_id) {
                                         await supabase.from('stocks').delete().eq('id', stock.stock_id)
                                     }
@@ -271,22 +369,38 @@ export default function Dashboard() {
                 </div>
             </main>
 
-            {/* Add Alert Modal */}
+            {/* Add/Edit Alert Modal */}
             {showAddModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
                     <div className="w-full max-w-md">
                         <AlertForm
-                            stockId={selectedStockId || ''}
-                            companyName={searchResult?.company_name}
-                            initialBaseline={searchResult?.price || 0}
+                            stockId={editingAlert?.stock_id || selectedStockId || ''}
+                            companyName={editingAlert?.company_name || searchResult?.company_name}
+                            initialBaseline={editingAlert?.current_price || searchResult?.price || 0}
+                            initialGain={editingAlert?.gain_threshold || 10}
+                            initialLoss={editingAlert?.loss_threshold || 5}
+                            initialSectorId={editingAlert?.sector_id || ''}
+                            initialIsPortfolio={editingAlert?.is_portfolio || false}
+                            initialSharesCount={editingAlert?.shares_count || 0}
                             onSave={handleSaveAlert}
                             onCancel={() => {
                                 setShowAddModal(false)
                                 setSearchResult(null)
+                                setEditingAlert(null)
                             }}
                         />
                     </div>
                 </div>
+            )}
+
+            {/* Add Sector Modal */}
+            {showSectorModal && (
+                <SectorModal
+                    onClose={() => setShowSectorModal(false)}
+                    onSectorAdded={() => {
+                        fetchSectors()
+                    }}
+                />
             )}
         </div>
     )

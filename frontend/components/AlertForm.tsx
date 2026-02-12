@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Loader2 } from 'lucide-react'
 import { SearchBar } from './SearchBar'
+import { createClient } from '@/lib/supabase'
 
 interface AlertFormProps {
     stockId?: string
@@ -8,6 +9,9 @@ interface AlertFormProps {
     initialBaseline?: number
     initialGain?: number
     initialLoss?: number
+    initialSectorId?: string
+    initialIsPortfolio?: boolean
+    initialSharesCount?: number
     onSave: (data: any) => Promise<void>
     onCancel: () => void
 }
@@ -18,13 +22,21 @@ export function AlertForm({
     initialBaseline = 0,
     initialGain = 10,
     initialLoss = 5,
+    initialSectorId = '',
+    initialIsPortfolio = false,
+    initialSharesCount = 0,
     onSave,
     onCancel
 }: AlertFormProps) {
     const [baseline, setBaseline] = useState(initialBaseline)
     const [gain, setGain] = useState(initialGain)
     const [loss, setLoss] = useState(initialLoss)
+    const [sectorId, setSectorId] = useState(initialSectorId)
+    const [isPortfolio, setIsPortfolio] = useState(initialIsPortfolio)
+    const [sharesCount, setSharesCount] = useState(initialSharesCount)
     const [loading, setLoading] = useState(false)
+    const [sectors, setSectors] = useState<any[]>([])
+    const supabase = createClient()
 
     // Internal state for stock selection
     const [selectedStock, setSelectedStock] = useState<{
@@ -32,9 +44,38 @@ export function AlertForm({
         price: number
     } | null>(initialCompanyName ? { company_name: initialCompanyName, price: initialBaseline } : null)
 
+    // Fetch sectors on mount
+    useEffect(() => {
+        fetchSectors()
+    }, [])
+
+    const fetchSectors = async () => {
+        try {
+            const { data, error } = await supabase
+                .from('sectors')
+                .select('id, name')
+                .order('name', { ascending: true })
+
+            if (error) throw error
+            setSectors(data || [])
+        } catch (error) {
+            console.error('Error fetching sectors:', error)
+        }
+    }
+
     const handleSubmit = async () => {
         if (!selectedStock) {
             alert("Please search and select a company first.")
+            return
+        }
+
+        if (!sectorId) {
+            alert("Please select a sector.")
+            return
+        }
+
+        if (isPortfolio && (!sharesCount || sharesCount <= 0)) {
+            alert("Please enter the number of shares for portfolio stocks.")
             return
         }
 
@@ -45,7 +86,10 @@ export function AlertForm({
                 company_name: selectedStock.company_name,
                 baseline_price: baseline,
                 gain_threshold_percent: gain,
-                loss_threshold_percent: loss
+                loss_threshold_percent: loss,
+                sector_id: sectorId,
+                is_portfolio: isPortfolio,
+                shares_count: isPortfolio ? sharesCount : null
             })
         } finally {
             setLoading(false)
@@ -118,6 +162,64 @@ export function AlertForm({
                     />
                 </div>
             </div>
+
+            <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-300">Sector</label>
+                <select
+                    value={sectorId}
+                    onChange={(e) => setSectorId(e.target.value)}
+                    className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white focus:border-blue-500 focus:outline-none"
+                    required
+                >
+                    <option value="">Select a sector</option>
+                    {sectors.map((sector) => (
+                        <option key={sector.id} value={sector.id}>
+                            {sector.name}
+                        </option>
+                    ))}
+                </select>
+            </div>
+
+            <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-300">Portfolio Stock</label>
+                <div className="flex items-center gap-4">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                            type="radio"
+                            name="portfolio"
+                            checked={!isPortfolio}
+                            onChange={() => setIsPortfolio(false)}
+                            className="h-4 w-4 text-blue-600"
+                        />
+                        <span className="text-sm text-gray-300">No</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                            type="radio"
+                            name="portfolio"
+                            checked={isPortfolio}
+                            onChange={() => setIsPortfolio(true)}
+                            className="h-4 w-4 text-blue-600"
+                        />
+                        <span className="text-sm text-gray-300">Yes</span>
+                    </label>
+                </div>
+            </div>
+
+            {isPortfolio && (
+                <div className="space-y-2">
+                    <label className="text-sm font-medium text-gray-300">Number of Shares</label>
+                    <input
+                        type="number"
+                        min="1"
+                        value={sharesCount}
+                        onChange={(e) => setSharesCount(parseInt(e.target.value))}
+                        className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white focus:border-blue-500 focus:outline-none"
+                        placeholder="Enter number of shares"
+                        required
+                    />
+                </div>
+            )}
 
             <div className="flex justify-end gap-2 pt-4">
                 <button
