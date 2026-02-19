@@ -38,7 +38,7 @@ export function SearchBar({ onSearchResult }: SearchBarProps) {
     }
 
     return (
-        <form onSubmit={handleSearch} className="relative w-full max-w-md">
+        <form onSubmit={handleSearch} className="relative w-full">
             <div className="relative group">
                 <div className="absolute -inset-0.5 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 opacity-30 blur transition group-hover:opacity-75"></div>
                 <div className="relative flex items-center rounded-full bg-black/80 backdrop-blur-xl border border-white/10">
@@ -46,19 +46,19 @@ export function SearchBar({ onSearchResult }: SearchBarProps) {
                         type="text"
                         value={query}
                         onChange={(e) => setQuery(e.target.value)}
-                        placeholder="Search stock (e.g., Tata Steel)..."
-                        className="w-full bg-transparent px-6 py-3 text-white placeholder-gray-400 focus:outline-none"
+                        placeholder="Search stock..."
+                        className="w-full bg-transparent px-4 py-2.5 text-sm text-white placeholder-gray-400 focus:outline-none"
                         disabled={loading}
                     />
                     <button
                         type="submit"
                         disabled={loading}
-                        className="mr-3 rounded-full p-2 text-gray-400 transition-colors hover:text-white disabled:opacity-50"
+                        className="mr-2 rounded-full p-1.5 text-gray-400 transition-colors hover:text-white disabled:opacity-50"
                     >
                         {loading ? (
-                            <Loader2 className="h-5 w-5 animate-spin" />
+                            <Loader2 className="h-4 w-4 animate-spin" />
                         ) : (
-                            <Search className="h-5 w-5" />
+                            <Search className="h-4 w-4" />
                         )}
                     </button>
                 </div>

@@ -52,7 +52,7 @@ export default function Home() {
             Real-time Indian Stock Market Alerts
           </div>
 
-          <h1 className="mb-6 max-w-4xl text-5xl font-bold tracking-tight text-white md:text-7xl">
+          <h1 className="mb-6 max-w-4xl text-3xl font-bold tracking-tight text-white sm:text-5xl md:text-7xl">
             Never miss a <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-600">market move</span> again.
           </h1>
 
@@ -60,18 +60,17 @@ export default function Home() {
             Automated tracking for NSE/BSE stocks. Get instant Discord notifications when your target prices are hit or when significant volatility is detected.
           </p>
 
-          <div className="flex gap-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:gap-4">
             <button
               onClick={() => setShowAuthModal(true)}
-
-              className="group flex items-center gap-2 rounded-full bg-white px-8 py-3 font-medium text-black transition-all hover:bg-gray-200"
+              className="group flex items-center justify-center gap-2 rounded-full bg-white px-8 py-3 font-medium text-black transition-all hover:bg-gray-200"
             >
               Get Started
               <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
             </button>
             <Link
               href="#demo"
-              className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-8 py-3 font-medium text-white backdrop-blur-sm transition-all hover:bg-white/10"
+              className="flex items-center justify-center gap-2 rounded-full border border-white/10 bg-white/5 px-8 py-3 font-medium text-white backdrop-blur-sm transition-all hover:bg-white/10"
             >
               View Demo
             </Link>

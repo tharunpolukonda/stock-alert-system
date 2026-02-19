@@ -7,7 +7,7 @@ import { StockCard } from '@/components/StockCard'
 import { SearchBar } from '@/components/SearchBar'
 import { AlertForm } from '@/components/AlertForm'
 import { SectorModal } from '@/components/SectorModal'
-import { Plus, LogOut, LayoutDashboard, Bell, Loader2, X, FolderPlus } from 'lucide-react'
+import { Plus, LogOut, LayoutDashboard, Bell, Loader2, X, FolderPlus, Menu } from 'lucide-react'
 
 export default function Dashboard() {
     const [user, setUser] = useState<any>(null)
@@ -16,6 +16,7 @@ export default function Dashboard() {
     const [loading, setLoading] = useState(true)
     const [showAddModal, setShowAddModal] = useState(false)
     const [showSectorModal, setShowSectorModal] = useState(false)
+    const [showMobileMenu, setShowMobileMenu] = useState(false)
     const [selectedStockId, setSelectedStockId] = useState<string | null>(null)
     const [searchResult, setSearchResult] = useState<any>(null)
     const [sectors, setSectors] = useState<any[]>([])
@@ -113,10 +114,8 @@ export default function Dashboard() {
 
     const filterStocks = (stocksList: any[], sectorId: string) => {
         if (!sectorId) {
-            // Default: show only portfolio stocks
             setStocks(stocksList.filter(s => s.is_portfolio))
         } else {
-            // Show all stocks in selected sector
             setStocks(stocksList.filter(s => s.sector_id === sectorId))
         }
     }
@@ -125,12 +124,7 @@ export default function Dashboard() {
         const portfolioStocks = allStocks.filter(s => s.is_portfolio && s.shares_count)
 
         if (portfolioStocks.length === 0) {
-            setPortfolioAnalytics({
-                totalInvestment: 0,
-                currentValue: 0,
-                totalGain: 0,
-                gainPercentage: 0
-            })
+            setPortfolioAnalytics({ totalInvestment: 0, currentValue: 0, totalGain: 0, gainPercentage: 0 })
             return
         }
 
@@ -143,7 +137,6 @@ export default function Dashboard() {
                 const invested = stock.current_price * stock.shares_count
                 totalInvested += invested
 
-                // Fetch current price
                 try {
                     const apiBase = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').replace(/\/$/, '')
                     const response = await fetch(`${apiBase}/api/search`, {
@@ -156,7 +149,6 @@ export default function Dashboard() {
                     if (result.success) {
                         totalCurrent += result.price * stock.shares_count
                     } else {
-                        // If fetch fails, use baseline price
                         totalCurrent += invested
                     }
                 } catch (error) {
@@ -181,9 +173,7 @@ export default function Dashboard() {
         }
     }
 
-    useEffect(() => {
-        fetchSectors()
-    }, [])
+    useEffect(() => { fetchSectors() }, [])
 
     useEffect(() => {
         filterStocks(allStocks, selectedSector)
@@ -201,7 +191,6 @@ export default function Dashboard() {
             return
         }
         setSearchResult(result)
-        // Removed setShowAddModal(true) - User wants to just see the result first
     }
 
     const handleSaveAlert = async (alertData: any) => {
@@ -211,7 +200,6 @@ export default function Dashboard() {
             let stockId = alertData.stock_id
             let stockName = alertData.company_name
 
-            // Create or update stock with sector
             if (!stockId && stockName) {
                 const { data: stockData, error: stockError } = await supabase
                     .from('stocks')
@@ -227,14 +215,9 @@ export default function Dashboard() {
                 if (stockError) throw stockError
                 stockId = stockData.id
             } else if (stockId) {
-                // Update existing stock's sector
-                await supabase
-                    .from('stocks')
-                    .update({ sector_id: alertData.sector_id })
-                    .eq('id', stockId)
+                await supabase.from('stocks').update({ sector_id: alertData.sector_id }).eq('id', stockId)
             }
 
-            // Create or update alert
             if (editingAlert) {
                 const { error: updateError } = await supabase
                     .from('user_alerts')
@@ -266,7 +249,6 @@ export default function Dashboard() {
                 if (alertError) throw alertError
             }
 
-            // Refresh
             setShowAddModal(false)
             setSearchResult(null)
             setEditingAlert(null)
@@ -296,8 +278,9 @@ export default function Dashboard() {
 
     return (
         <div className="min-h-screen bg-black text-white">
-            {/* Sidebar / Navigation */}
-            <aside className="fixed left-0 top-0 hidden h-full w-64 border-r border-white/10 bg-black p-6 lg:block">
+
+            {/* ── Desktop Sidebar ── */}
+            <aside className="fixed left-0 top-0 hidden h-full w-64 border-r border-white/10 bg-black p-6 lg:flex lg:flex-col">
                 <div className="mb-8 flex items-center gap-2 text-xl font-bold text-white">
                     <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600">
                         <LayoutDashboard className="h-5 w-5" />
@@ -316,7 +299,7 @@ export default function Dashboard() {
                     </button>
                 </nav>
 
-                <div className="absolute bottom-6 left-6 right-6">
+                <div className="mt-auto">
                     <div className="mb-4 rounded-lg bg-gray-900 p-4">
                         <p className="text-xs text-gray-400">Logged in as</p>
                         <p className="truncate text-sm font-medium text-white">{user?.email}</p>
@@ -331,19 +314,87 @@ export default function Dashboard() {
                 </div>
             </aside>
 
-            {/* Main Content */}
-            <main className="min-h-screen p-6 lg:pl-72">
-                <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            {/* ── Mobile Top Nav ── */}
+            <header className="sticky top-0 z-40 flex items-center justify-between border-b border-white/10 bg-black/90 px-4 py-3 backdrop-blur-md lg:hidden">
+                <div className="flex items-center gap-2 text-base font-bold">
+                    <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-600">
+                        <LayoutDashboard className="h-4 w-4" />
+                    </div>
+                    Dashboard
+                </div>
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={() => {
+                            setSearchResult(null)
+                            setEditingAlert(null)
+                            setShowAddModal(true)
+                        }}
+                        className="flex items-center gap-1.5 rounded-full bg-blue-600 px-3 py-1.5 text-sm font-medium text-white"
+                    >
+                        <Plus className="h-4 w-4" />
+                        Add
+                    </button>
+                    <button
+                        onClick={() => setShowMobileMenu(!showMobileMenu)}
+                        className="rounded-lg border border-white/10 p-2 text-gray-400"
+                    >
+                        <Menu className="h-5 w-5" />
+                    </button>
+                </div>
+            </header>
+
+            {/* ── Mobile Slide-down Menu ── */}
+            {showMobileMenu && (
+                <div className="fixed inset-0 z-50 bg-black/80 lg:hidden" onClick={() => setShowMobileMenu(false)}>
+                    <div
+                        className="absolute right-0 top-0 h-full w-72 border-l border-white/10 bg-black p-6"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <div className="mb-6 flex items-center justify-between">
+                            <span className="font-bold text-white">Menu</span>
+                            <button onClick={() => setShowMobileMenu(false)} className="text-gray-400">
+                                <X className="h-5 w-5" />
+                            </button>
+                        </div>
+                        <div className="mb-6 rounded-lg bg-gray-900 p-4">
+                            <p className="text-xs text-gray-400">Logged in as</p>
+                            <p className="truncate text-sm font-medium text-white">{user?.email}</p>
+                        </div>
+                        <div className="space-y-2">
+                            <button
+                                onClick={() => { setShowSectorModal(true); setShowMobileMenu(false) }}
+                                className="flex w-full items-center gap-3 rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-white"
+                            >
+                                <FolderPlus className="h-5 w-5" />
+                                Add Sector
+                            </button>
+                            <button
+                                onClick={handleSignOut}
+                                className="flex w-full items-center gap-3 rounded-lg border border-white/10 px-4 py-3 text-red-400"
+                            >
+                                <LogOut className="h-5 w-5" />
+                                Sign Out
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ── Main Content ── */}
+            <main className="min-h-screen p-4 lg:p-6 lg:pl-72">
+                {/* Header row */}
+                <div className="mb-6 flex flex-col gap-4">
                     <div>
-                        <h1 className="text-2xl font-bold">Stock Watchlist</h1>
-                        <p className="text-gray-400">Monitor your favorite stocks and manage alerts.</p>
+                        <h1 className="text-xl font-bold lg:text-2xl">Stock Watchlist</h1>
+                        <p className="text-sm text-gray-400">Monitor your stocks and manage alerts.</p>
                     </div>
 
-                    <div className="flex w-full flex-col gap-4 md:w-auto md:flex-row">
+                    {/* Controls row — scrollable on mobile */}
+                    <div className="flex flex-wrap items-center gap-2">
                         <select
                             value={selectedSector}
                             onChange={(e) => setSelectedSector(e.target.value)}
-                            className="rounded-full border border-white/10 bg-black px-4 py-2 font-medium text-white transition-colors hover:bg-white/10"
+                            className="rounded-full border border-white/10 bg-black px-3 py-2 text-sm font-medium text-white"
                             style={{ colorScheme: 'dark' }}
                         >
                             <option value="" className="bg-black text-white">Portfolio Stocks</option>
@@ -353,29 +404,37 @@ export default function Dashboard() {
                                 </option>
                             ))}
                         </select>
-                        <SearchBar onSearchResult={handleSearchResult} />
+
+                        <div className="flex-1 min-w-0">
+                            <SearchBar onSearchResult={handleSearchResult} />
+                        </div>
+
                         <button
                             onClick={() => fetchStocks(user.id)}
-                            className="flex items-center justify-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 font-medium text-white transition-colors hover:bg-white/10"
-                            title="Refresh Prices"
+                            className="flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-sm font-medium text-white hover:bg-white/10"
+                            title="Refresh"
                         >
                             <Loader2 className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-                            Refresh
+                            <span className="hidden sm:inline">Refresh</span>
                         </button>
+
+                        {/* Add Sector — hidden on mobile (use menu) */}
                         <button
                             onClick={() => setShowSectorModal(true)}
-                            className="flex items-center justify-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 font-medium text-white transition-colors hover:bg-white/10"
+                            className="hidden sm:flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-sm font-medium text-white hover:bg-white/10"
                         >
                             <FolderPlus className="h-4 w-4" />
                             Add Sector
                         </button>
+
+                        {/* Add Alert — hidden on mobile (in sticky header) */}
                         <button
                             onClick={() => {
                                 setSearchResult(null)
                                 setEditingAlert(null)
                                 setShowAddModal(true)
                             }}
-                            className="flex items-center justify-center gap-2 rounded-full bg-blue-600 px-4 py-2 font-medium text-white transition-colors hover:bg-blue-700"
+                            className="hidden sm:flex items-center gap-1.5 rounded-full bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
                         >
                             <Plus className="h-4 w-4" />
                             Add Alert
@@ -385,33 +444,35 @@ export default function Dashboard() {
 
                 {/* Portfolio Analytics */}
                 {!selectedSector && allStocks.filter(s => s.is_portfolio).length > 0 && (
-                    <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                        <div className="rounded-xl border border-white/10 bg-gradient-to-br from-blue-500/10 to-blue-600/5 p-6 backdrop-blur-md">
-                            <p className="text-sm text-gray-400 mb-1">Total Investment</p>
-                            <p className="text-2xl font-bold text-white">₹{portfolioAnalytics.totalInvestment.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</p>
-                        </div>
-                        <div className="rounded-xl border border-white/10 bg-gradient-to-br from-purple-500/10 to-purple-600/5 p-6 backdrop-blur-md">
-                            <p className="text-sm text-gray-400 mb-1">Current Value</p>
-                            <p className="text-2xl font-bold text-white">₹{portfolioAnalytics.currentValue.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</p>
-                            {fetchingPrices && <p className="text-xs text-gray-500 mt-1">Updating...</p>}
-                        </div>
-                        <div className={`rounded-xl border border-white/10 p-6 backdrop-blur-md ${portfolioAnalytics.totalGain >= 0
-                            ? 'bg-gradient-to-br from-green-500/10 to-green-600/5'
-                            : 'bg-gradient-to-br from-red-500/10 to-red-600/5'
-                            }`}>
-                            <p className="text-sm text-gray-400 mb-1">Total Gain/Loss</p>
-                            <p className={`text-2xl font-bold ${portfolioAnalytics.totalGain >= 0 ? 'text-green-400' : 'text-red-400'
-                                }`}>
-                                {portfolioAnalytics.totalGain >= 0 ? '+' : ''}₹{portfolioAnalytics.totalGain.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                    <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+                        <div className="rounded-xl border border-white/10 bg-gradient-to-br from-blue-500/10 to-blue-600/5 p-4 backdrop-blur-md">
+                            <p className="text-xs text-gray-400 mb-1">Total Investment</p>
+                            <p className="text-lg font-bold text-white leading-tight">
+                                ₹{portfolioAnalytics.totalInvestment.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                             </p>
                         </div>
-                        <div className={`rounded-xl border border-white/10 p-6 backdrop-blur-md ${portfolioAnalytics.gainPercentage >= 0
+                        <div className="rounded-xl border border-white/10 bg-gradient-to-br from-purple-500/10 to-purple-600/5 p-4 backdrop-blur-md">
+                            <p className="text-xs text-gray-400 mb-1">Current Value</p>
+                            <p className="text-lg font-bold text-white leading-tight">
+                                ₹{portfolioAnalytics.currentValue.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                            </p>
+                            {fetchingPrices && <p className="text-xs text-gray-500 mt-1">Updating...</p>}
+                        </div>
+                        <div className={`rounded-xl border border-white/10 p-4 backdrop-blur-md ${portfolioAnalytics.totalGain >= 0
                             ? 'bg-gradient-to-br from-green-500/10 to-green-600/5'
                             : 'bg-gradient-to-br from-red-500/10 to-red-600/5'
                             }`}>
-                            <p className="text-sm text-gray-400 mb-1">Gain/Loss %</p>
-                            <p className={`text-2xl font-bold ${portfolioAnalytics.gainPercentage >= 0 ? 'text-green-400' : 'text-red-400'
-                                }`}>
+                            <p className="text-xs text-gray-400 mb-1">Gain / Loss</p>
+                            <p className={`text-lg font-bold leading-tight ${portfolioAnalytics.totalGain >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                {portfolioAnalytics.totalGain >= 0 ? '+' : ''}₹{portfolioAnalytics.totalGain.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                            </p>
+                        </div>
+                        <div className={`rounded-xl border border-white/10 p-4 backdrop-blur-md ${portfolioAnalytics.gainPercentage >= 0
+                            ? 'bg-gradient-to-br from-green-500/10 to-green-600/5'
+                            : 'bg-gradient-to-br from-red-500/10 to-red-600/5'
+                            }`}>
+                            <p className="text-xs text-gray-400 mb-1">Return %</p>
+                            <p className={`text-lg font-bold leading-tight ${portfolioAnalytics.gainPercentage >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                                 {portfolioAnalytics.gainPercentage >= 0 ? '+' : ''}{portfolioAnalytics.gainPercentage.toFixed(2)}%
                             </p>
                         </div>
@@ -420,21 +481,21 @@ export default function Dashboard() {
 
                 {/* Search Result Preview */}
                 {searchResult && !showAddModal && (
-                    <div className="mb-8 rounded-xl border border-blue-500/30 bg-blue-500/10 p-6 backdrop-blur-md relative">
+                    <div className="mb-6 rounded-xl border border-blue-500/30 bg-blue-500/10 p-4 relative">
                         <button
                             onClick={() => setSearchResult(null)}
-                            className="absolute top-4 right-4 text-gray-400 hover:text-white"
+                            className="absolute top-3 right-3 text-gray-400 hover:text-white"
                         >
                             <X className="h-5 w-5" />
                         </button>
-                        <div className="flex items-center justify-between">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                             <div>
-                                <h3 className="text-xl font-bold">{searchResult.company_name}</h3>
-                                <p className="text-3xl font-bold mt-2">₹{searchResult.price?.toLocaleString()}</p>
+                                <h3 className="text-lg font-bold">{searchResult.company_name}</h3>
+                                <p className="text-2xl font-bold mt-1">₹{searchResult.price?.toLocaleString()}</p>
                             </div>
                             <button
                                 onClick={() => setShowAddModal(true)}
-                                className="rounded-lg bg-blue-600 px-6 py-2 font-medium text-white hover:bg-blue-700"
+                                className="self-start rounded-lg bg-blue-600 px-5 py-2 text-sm font-medium text-white hover:bg-blue-700 sm:self-auto"
                             >
                                 Set Alert
                             </button>
@@ -443,14 +504,14 @@ export default function Dashboard() {
                 )}
 
                 {/* Stock Grid */}
-                <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                     {stocks.length === 0 ? (
-                        <div className="col-span-full flex flex-col items-center justify-center rounded-2xl border border-dashed border-white/10 py-20 text-center">
+                        <div className="col-span-full flex flex-col items-center justify-center rounded-2xl border border-dashed border-white/10 py-16 text-center">
                             <div className="mb-4 rounded-full bg-white/5 p-4">
                                 <Bell className="h-8 w-8 text-gray-500" />
                             </div>
                             <h3 className="text-lg font-medium text-white">No alerts configured</h3>
-                            <p className="mt-1 text-gray-400">Search for a stock above to get started.</p>
+                            <p className="mt-1 text-sm text-gray-400">Search for a stock above to get started.</p>
                         </div>
                     ) : (
                         stocks.map((stock) => (
@@ -460,11 +521,9 @@ export default function Dashboard() {
                                 onEdit={handleEditAlert}
                                 onDelete={async (id) => {
                                     const { error: alertError } = await supabase.from('user_alerts').delete().eq('id', id)
-
                                     if (!alertError && stock.stock_id) {
                                         await supabase.from('stocks').delete().eq('id', stock.stock_id)
                                     }
-
                                     fetchStocks(user.id)
                                 }}
                             />
@@ -475,8 +534,8 @@ export default function Dashboard() {
 
             {/* Add/Edit Alert Modal */}
             {showAddModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-                    <div className="w-full max-w-md">
+                <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/80 backdrop-blur-sm sm:items-center p-4">
+                    <div className="w-full max-w-md max-h-[90vh] overflow-y-auto">
                         <AlertForm
                             stockId={editingAlert?.stock_id || selectedStockId || ''}
                             companyName={editingAlert?.company_name || searchResult?.company_name}
@@ -497,13 +556,11 @@ export default function Dashboard() {
                 </div>
             )}
 
-            {/* Add Sector Modal */}
+            {/* Sector Modal */}
             {showSectorModal && (
                 <SectorModal
                     onClose={() => setShowSectorModal(false)}
-                    onSectorAdded={() => {
-                        fetchSectors()
-                    }}
+                    onSectorAdded={() => { fetchSectors() }}
                 />
             )}
         </div>
