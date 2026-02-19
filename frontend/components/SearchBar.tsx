@@ -18,11 +18,13 @@ export function SearchBar({ onSearchResult }: SearchBarProps) {
 
         setLoading(true)
         try {
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/search`, {
+            const apiBase = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').replace(/\/$/, '')
+            const response = await fetch(`${apiBase}/api/search`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
+                cache: 'no-store',
                 body: JSON.stringify({ company_name: query }),
             })
 

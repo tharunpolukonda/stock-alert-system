@@ -145,9 +145,11 @@ export default function Dashboard() {
 
                 // Fetch current price
                 try {
-                    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/search`, {
+                    const apiBase = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').replace(/\/$/, '')
+                    const response = await fetch(`${apiBase}/api/search`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
+                        cache: 'no-store',
                         body: JSON.stringify({ company_name: stock.company_name }),
                     })
                     const result = await response.json()
@@ -394,8 +396,8 @@ export default function Dashboard() {
                             {fetchingPrices && <p className="text-xs text-gray-500 mt-1">Updating...</p>}
                         </div>
                         <div className={`rounded-xl border border-white/10 p-6 backdrop-blur-md ${portfolioAnalytics.totalGain >= 0
-                                ? 'bg-gradient-to-br from-green-500/10 to-green-600/5'
-                                : 'bg-gradient-to-br from-red-500/10 to-red-600/5'
+                            ? 'bg-gradient-to-br from-green-500/10 to-green-600/5'
+                            : 'bg-gradient-to-br from-red-500/10 to-red-600/5'
                             }`}>
                             <p className="text-sm text-gray-400 mb-1">Total Gain/Loss</p>
                             <p className={`text-2xl font-bold ${portfolioAnalytics.totalGain >= 0 ? 'text-green-400' : 'text-red-400'
@@ -404,8 +406,8 @@ export default function Dashboard() {
                             </p>
                         </div>
                         <div className={`rounded-xl border border-white/10 p-6 backdrop-blur-md ${portfolioAnalytics.gainPercentage >= 0
-                                ? 'bg-gradient-to-br from-green-500/10 to-green-600/5'
-                                : 'bg-gradient-to-br from-red-500/10 to-red-600/5'
+                            ? 'bg-gradient-to-br from-green-500/10 to-green-600/5'
+                            : 'bg-gradient-to-br from-red-500/10 to-red-600/5'
                             }`}>
                             <p className="text-sm text-gray-400 mb-1">Gain/Loss %</p>
                             <p className={`text-2xl font-bold ${portfolioAnalytics.gainPercentage >= 0 ? 'text-green-400' : 'text-red-400'

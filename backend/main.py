@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from scraper import StockScraper
@@ -43,7 +43,7 @@ async def root():
 
 
 @app.post("/api/search", response_model=SearchResponse)
-async def search_stock(request: SearchRequest):
+async def search_stock(request: SearchRequest, response: Response):
     """
     Search for a stock and return its current price
     
@@ -53,13 +53,14 @@ async def search_stock(request: SearchRequest):
     Returns:
         SearchResponse with price data
     """
+    # Disable caching so Vercel's CDN never serves a stale price
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+
     try:
         log.info(f"Searching for stock: {request.company_name}")
         
-        # Use headless mode in production
-        headless = os.getenv("HEADLESS_MODE", "true").lower() == "true"
-        scraper = StockScraper(headless=headless)
-        
+        scraper = StockScraper()
         result = scraper.scrape_stock_price(request.company_name)
         
         return SearchResponse(**result)
