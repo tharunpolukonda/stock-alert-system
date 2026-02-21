@@ -9,7 +9,7 @@ log = logging.getLogger(__name__)
 
 
 class StockScraper:
-    """Scraper for fetching stock prices from screener.in using HTTP requests (no browser needed)"""
+    """Scraper for fetching stock data from screener.in using HTTP requests (no browser needed)"""
 
     BASE_URL = "https://www.screener.in"
     SEARCH_URL = "https://www.screener.in/api/company/search/"
@@ -35,99 +35,82 @@ class StockScraper:
         except Exception as e:
             log.warning(f"Could not prime session: {e}")
 
-    def scrape_stock_price(self, company_name: str) -> dict:
-        """
-        Fetch the current stock price for a given company from screener.in.
+    # ──────────────────────────────────────────────────────────────
+    #  Internal helpers
+    # ──────────────────────────────────────────────────────────────
 
-        Args:
-            company_name (str): Name of the company to search (e.g. "Tata Steel")
+    def _search_company(self, company_name: str):
+        """Search for a company and return (found_name, company_url) or raise."""
+        search_resp = self.session.get(
+            self.SEARCH_URL,
+            params={"q": company_name, "v": "3", "fts": "1"},
+            headers={
+                "Accept": "application/json, text/javascript, */*; q=0.01",
+                "X-Requested-With": "XMLHttpRequest",
+                "Referer": self.BASE_URL + "/",
+            },
+            timeout=15,
+        )
+        search_resp.raise_for_status()
+        results = search_resp.json()
+        if not results:
+            return None, None
+        company = results[0]
+        company_url = self.BASE_URL + company["url"]
+        found_name = company.get("name", company_name)
+        log.info(f"Found: {found_name} → {company_url}")
+        return found_name, company_url
 
-        Returns:
-            dict: { company_name, price, success, error }
+    def _fetch_page(self, url: str) -> BeautifulSoup:
+        """Fetch and parse a screener.in page."""
+        page_resp = self.session.get(
+            url,
+            headers={"Referer": self.BASE_URL + "/"},
+            timeout=20,
+        )
+        page_resp.raise_for_status()
+        return BeautifulSoup(page_resp.text, "html.parser")
+
+    def _parse_number(self, raw: str):
         """
+        Convert a raw screener string like '₹ 1,234.56' or '12.3 Cr' to float.
+        Returns the float value, or None if unparseable.
+        """
+        if not raw:
+            return None
+        cleaned = re.sub(r"[₹,\s]", "", raw)
+        # handle ranges like "141 / 148" → take first value
+        cleaned = cleaned.split("/")[0].strip()
+        # strip units like 'Cr', 'L', '%' etc. from numbers for storage
+        # but keep as string if it has units we want to display verbatim
         try:
-            # ── Step 1: Search for company ─────────────────────────────────
-            search_resp = self.session.get(
-                self.SEARCH_URL,
-                params={"q": company_name, "v": "3", "fts": "1"},
-                headers={
-                    "Accept": "application/json, text/javascript, */*; q=0.01",
-                    "X-Requested-With": "XMLHttpRequest",
-                    "Referer": self.BASE_URL + "/",
-                },
-                timeout=15,
-            )
-            search_resp.raise_for_status()
-            results = search_resp.json()
+            return float(cleaned)
+        except ValueError:
+            return None
 
-            if not results:
-                return {
-                    "company_name": company_name,
-                    "price": None,
-                    "success": False,
-                    "error": f'No company found matching "{company_name}" on screener.in',
-                }
-
-            company = results[0]
-            company_url = self.BASE_URL + company["url"]
-            found_name = company.get("name", company_name)
-            log.info(f"Found: {found_name} → {company_url}")
-
-            # ── Step 2: Fetch company page ──────────────────────────────────
-            page_resp = self.session.get(
-                company_url,
-                headers={"Referer": self.BASE_URL + "/"},
-                timeout=20,
-            )
-            page_resp.raise_for_status()
-
-            soup = BeautifulSoup(page_resp.text, "html.parser")
-            price = self._extract_price(soup)
-
-            if price is None:
-                return {
-                    "company_name": found_name,
-                    "price": None,
-                    "success": False,
-                    "error": "Could not extract current price from screener.in page",
-                }
-
-            log.info(f"Price for {found_name}: ₹{price}")
-            return {
-                "company_name": found_name,
-                "price": price,
-                "success": True,
-                "error": None,
-            }
-
-        except requests.exceptions.ConnectionError as e:
-            return {"company_name": company_name, "price": None, "success": False,
-                    "error": f"Connection error reaching screener.in: {e}"}
-        except requests.exceptions.Timeout:
-            return {"company_name": company_name, "price": None, "success": False,
-                    "error": "Request to screener.in timed out — try again shortly"}
-        except requests.exceptions.HTTPError as e:
-            return {"company_name": company_name, "price": None, "success": False,
-                    "error": f"HTTP error from screener.in: {e}"}
-        except Exception as e:
-            log.error(f"Unexpected error scraping {company_name}: {e}")
-            return {"company_name": company_name, "price": None, "success": False, "error": str(e)}
+    def _extract_top_ratios(self, soup: BeautifulSoup) -> dict:
+        """
+        Parse the #top-ratios <ul> and return a dict of {label: raw_text}.
+        Example keys: 'Current Price', 'High / Low', 'Market Cap', 'ROE', 'ROCE'
+        """
+        ratios = {}
+        top_ratios = soup.find("ul", id="top-ratios")
+        if not top_ratios:
+            return ratios
+        for li in top_ratios.find_all("li"):
+            name_span = li.find("span", class_="name")
+            if not name_span:
+                continue
+            label = name_span.get_text(strip=True)
+            # Collect all number spans (some fields have multiple)
+            number_spans = li.find_all("span", class_="number")
+            values = [s.get_text(strip=True) for s in number_spans]
+            ratios[label] = " / ".join(values) if values else ""
+        return ratios
 
     def _extract_price(self, soup: BeautifulSoup):
-        """
-        Parse current price from a screener.in company HTML page.
-
-        Screener.in shows the current price in the top-ratios section:
-          <ul id="top-ratios">
-            <li>
-              <span class="name">Current Price</span>
-              <span class="nowrap"><span class="number">₹ 141.25</span></span>
-            </li>
-            ...
-          </ul>
-        """
+        """Parse current price from a screener.in company HTML page."""
         try:
-            # ── Method 1: top-ratios list — most reliable ──────────────────
             top_ratios = soup.find("ul", id="top-ratios")
             if top_ratios:
                 for li in top_ratios.find_all("li"):
@@ -137,26 +120,179 @@ class StockScraper:
                         if number_span:
                             raw = number_span.get_text(strip=True)
                             cleaned = re.sub(r"[₹,\s]", "", raw)
-                            # handle ranges like "141 / 148" → take first
                             cleaned = cleaned.split("/")[0].strip()
                             return float(cleaned)
 
-            # ── Method 2: first .number span that is a reasonable price ────
+            # Fallback: first .number span with a sane price
             for span in soup.find_all("span", class_="number"):
                 text = re.sub(r"[₹,\s]", "", span.get_text(strip=True))
                 text = text.split("/")[0].strip()
                 try:
                     val = float(text)
-                    if 0.5 < val < 1_000_000:  # sane Indian stock price range
+                    if 0.5 < val < 1_000_000:
                         return val
                 except ValueError:
                     continue
-
             return None
-
         except Exception as e:
             log.error(f"Error extracting price: {e}")
             return None
+
+    def _extract_high_low(self, ratios: dict):
+        """
+        Extract 52-week high and low from the top-ratios dict.
+        The field is usually labelled '52 Week High / Low' with two number spans.
+        """
+        for key in ratios:
+            if "high" in key.lower() and "low" in key.lower():
+                raw = ratios[key]
+                # format is "High / Low" — two numbers separated by " / "
+                parts = [p.strip() for p in raw.split("/")]
+                high = self._parse_number(parts[0]) if len(parts) > 0 else None
+                low = self._parse_number(parts[1]) if len(parts) > 1 else None
+                return high, low
+        return None, None
+
+    def _extract_description(self, soup: BeautifulSoup) -> str:
+        """Try several selectors to pull the company 'about' blurb."""
+        selectors = [
+            "div.company-background p",
+            "div.about p",
+            "#company-background p",
+            "section.company-background p",
+            "div[id*='background'] p",
+            "div[class*='background'] p",
+            "div[class*='about'] p",
+        ]
+        for sel in selectors:
+            tag = soup.select_one(sel)
+            if tag:
+                text = tag.get_text(separator=" ", strip=True)
+                if len(text) > 20:
+                    return text
+        # Last-resort: look for a <p> near text "About"
+        for heading in soup.find_all(["h2", "h3", "h4"], string=re.compile(r"about", re.I)):
+            sibling = heading.find_next_sibling("p")
+            if sibling:
+                text = sibling.get_text(separator=" ", strip=True)
+                if len(text) > 20:
+                    return text
+        return ""
+
+    # ──────────────────────────────────────────────────────────────
+    #  Public API
+    # ──────────────────────────────────────────────────────────────
+
+    def scrape_stock_price(self, company_name: str) -> dict:
+        """
+        Fetch the current stock price for a given company from screener.in.
+
+        Returns:
+            dict: { company_name, price, success, error }
+        """
+        result = self.scrape_stock_details(company_name)
+        # Return only price-relevant fields for backward compatibility
+        return {
+            "company_name": result["company_name"],
+            "price": result["price"],
+            "success": result["success"],
+            "error": result["error"],
+        }
+
+    def scrape_stock_details(self, company_name: str) -> dict:
+        """
+        Fetch complete stock details for a given company from screener.in.
+
+        Returns:
+            dict: {
+                company_name, price, high, low, market_cap, roe, roce,
+                description, success, error
+            }
+        """
+        base_result = {
+            "company_name": company_name,
+            "price": None,
+            "high": None,
+            "low": None,
+            "market_cap": None,
+            "roe": None,
+            "roce": None,
+            "description": "",
+            "success": False,
+            "error": None,
+        }
+
+        try:
+            # ── Step 1: Search for company ──────────────────────────────
+            found_name, company_url = self._search_company(company_name)
+
+            if not found_name:
+                base_result["error"] = f'No company found matching "{company_name}" on screener.in'
+                return base_result
+
+            base_result["company_name"] = found_name
+
+            # ── Step 2: Fetch company page ──────────────────────────────
+            soup = self._fetch_page(company_url)
+
+            # ── Step 3: Extract all top-ratio fields ────────────────────
+            ratios = self._extract_top_ratios(soup)
+            log.info(f"Top-ratio labels found: {list(ratios.keys())}")
+
+            # Current price
+            price = self._extract_price(soup)
+            base_result["price"] = price
+
+            # 52-week High / Low
+            high, low = self._extract_high_low(ratios)
+            base_result["high"] = high
+            base_result["low"] = low
+
+            # Market Cap — look for label containing 'Market Cap' or 'Mkt Cap'
+            for key, val in ratios.items():
+                if "market cap" in key.lower() or "mkt cap" in key.lower():
+                    # Keep as raw string (e.g. "1,23,456 Cr") for display
+                    base_result["market_cap"] = val
+                    break
+
+            # ROE — Return on Equity
+            for key, val in ratios.items():
+                if key.strip().upper() == "ROE":
+                    base_result["roe"] = val
+                    break
+
+            # ROCE — Return on Capital Employed
+            for key, val in ratios.items():
+                if key.strip().upper() == "ROCE":
+                    base_result["roce"] = val
+                    break
+
+            # Company description
+            base_result["description"] = self._extract_description(soup)
+
+            if price is None:
+                base_result["error"] = "Could not extract current price from screener.in page"
+                # Still return partial data — other fields may have been scraped
+            else:
+                base_result["success"] = True
+
+            log.info(
+                f"{found_name}: price={price}, high={high}, low={low}, "
+                f"mkt_cap={base_result['market_cap']}, roe={base_result['roe']}, roce={base_result['roce']}"
+            )
+            return base_result
+
+        except requests.exceptions.ConnectionError as e:
+            base_result["error"] = f"Connection error reaching screener.in: {e}"
+        except requests.exceptions.Timeout:
+            base_result["error"] = "Request to screener.in timed out — try again shortly"
+        except requests.exceptions.HTTPError as e:
+            base_result["error"] = f"HTTP error from screener.in: {e}"
+        except Exception as e:
+            log.error(f"Unexpected error scraping {company_name}: {e}")
+            base_result["error"] = str(e)
+
+        return base_result
 
     def scrape_multiple_stocks(self, company_names: list) -> list:
         """
@@ -179,5 +315,6 @@ class StockScraper:
 
 if __name__ == "__main__":
     scraper = StockScraper(headless=False)
-    result = scraper.scrape_stock_price("Tata Steel")
-    print(result)
+    import json
+    result = scraper.scrape_stock_details("Tata Steel")
+    print(json.dumps(result, indent=2))

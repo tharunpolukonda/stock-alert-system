@@ -33,6 +33,19 @@ class SearchResponse(BaseModel):
     error: Optional[str] = None
 
 
+class StockDetailsResponse(BaseModel):
+    company_name: str
+    price: Optional[float] = None
+    high: Optional[float] = None
+    low: Optional[float] = None
+    market_cap: Optional[str] = None
+    roe: Optional[str] = None
+    roce: Optional[str] = None
+    description: Optional[str] = None
+    success: bool
+    error: Optional[str] = None
+
+
 @app.get("/")
 async def root():
     """Health check endpoint"""
@@ -46,10 +59,10 @@ async def root():
 async def search_stock(request: SearchRequest, response: Response):
     """
     Search for a stock and return its current price
-    
+
     Args:
         request: SearchRequest with company_name
-        
+
     Returns:
         SearchResponse with price data
     """
@@ -59,14 +72,42 @@ async def search_stock(request: SearchRequest, response: Response):
 
     try:
         log.info(f"Searching for stock: {request.company_name}")
-        
+
         scraper = StockScraper()
         result = scraper.scrape_stock_price(request.company_name)
-        
+
         return SearchResponse(**result)
-    
+
     except Exception as e:
         log.error(f"Error in search endpoint: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/stock-details", response_model=StockDetailsResponse)
+async def get_stock_details(request: SearchRequest, response: Response):
+    """
+    Fetch comprehensive stock details including High/Low, Market Cap, ROE, ROCE,
+    and company description from screener.in.
+
+    Args:
+        request: SearchRequest with company_name
+
+    Returns:
+        StockDetailsResponse with full stock data
+    """
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+
+    try:
+        log.info(f"Fetching stock details for: {request.company_name}")
+
+        scraper = StockScraper()
+        result = scraper.scrape_stock_details(request.company_name)
+
+        return StockDetailsResponse(**result)
+
+    except Exception as e:
+        log.error(f"Error in stock-details endpoint: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
