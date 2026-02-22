@@ -14,7 +14,7 @@ class StockScraper:
     BASE_URL = "https://www.screener.in"
     SEARCH_URL = "https://www.screener.in/api/company/search/"
 
-    def __init__(self, headless=False):  # headless param kept for backward compatibility
+    def __init__(self, headless=False):  # Deprecated: headless param kept for backward compatibility
         self.session = requests.Session()
         self.session.headers.update({
             "User-Agent": (

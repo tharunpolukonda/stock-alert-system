@@ -21,7 +21,7 @@ class AlertEngine:
             supabase_key: Supabase service role key
         """
         self.supabase: Client = create_client(supabase_url, supabase_key)
-        self.scraper = StockScraper(headless=True)
+        self.scraper = StockScraper()
     
     def get_active_alerts(self) -> List[Dict]:
         """
