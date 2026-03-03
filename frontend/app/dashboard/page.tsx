@@ -7,7 +7,32 @@ import { StockCard } from '@/components/StockCard'
 import { SearchBar } from '@/components/SearchBar'
 import { AlertForm } from '@/components/AlertForm'
 import { SectorModal } from '@/components/SectorModal'
-import { Plus, LogOut, LayoutDashboard, Bell, Loader2, X, FolderPlus, Menu } from 'lucide-react'
+import Image from 'next/image'
+import {
+    Plus, LogOut, Loader2, X, FolderPlus, Menu, BarChart3,
+    RefreshCw, AlertTriangle, LayoutDashboard, Bell, TrendingUp
+} from 'lucide-react'
+
+/* ── Logout Confirmation Modal ── */
+function LogoutConfirmModal({ onConfirm, onCancel }: { onConfirm: () => void; onCancel: () => void }) {
+    return (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/75 backdrop-blur-sm p-4" onClick={onCancel}>
+            <div className="w-full max-w-sm rounded-2xl border border-red-500/30 bg-[#0a0a0f] p-6 shadow-2xl animate-slide-up" onClick={(e) => e.stopPropagation()}>
+                <div className="flex flex-col items-center text-center mb-5">
+                    <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-red-500/15">
+                        <AlertTriangle className="h-6 w-6 text-red-400" />
+                    </div>
+                    <h3 className="text-base font-bold text-white">Logout?</h3>
+                    <p className="mt-1.5 text-sm text-gray-400">Are you sure you want to sign out of your account?</p>
+                </div>
+                <div className="flex gap-3">
+                    <button onClick={onCancel} className="flex-1 rounded-xl border border-white/10 bg-white/5 py-2.5 text-sm font-medium text-gray-300 hover:bg-white/10 transition-colors">Cancel</button>
+                    <button onClick={onConfirm} className="flex-1 rounded-xl bg-red-600 py-2.5 text-sm font-bold text-white hover:bg-red-700 transition-colors">Logout</button>
+                </div>
+            </div>
+        </div>
+    )
+}
 
 export default function Dashboard() {
     const [user, setUser] = useState<any>(null)
@@ -17,6 +42,7 @@ export default function Dashboard() {
     const [showAddModal, setShowAddModal] = useState(false)
     const [showSectorModal, setShowSectorModal] = useState(false)
     const [showMobileMenu, setShowMobileMenu] = useState(false)
+    const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
     const [selectedStockId, setSelectedStockId] = useState<string | null>(null)
     const [searchResult, setSearchResult] = useState<any>(null)
     const [sectors, setSectors] = useState<any[]>([])
@@ -270,218 +296,284 @@ export default function Dashboard() {
 
     if (loading) {
         return (
-            <div className="flex h-screen items-center justify-center bg-black text-white">
-                <div className="h-8 w-8 animate-spin rounded-full border-2 border-blue-500 border-t-transparent"></div>
+            <div className="flex h-screen items-center justify-center bg-[#020817] text-white">
+                <div className="flex flex-col items-center gap-3">
+                    <div className="h-8 w-8 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
+                    <p className="text-sm text-gray-400">Loading dashboard...</p>
+                </div>
             </div>
         )
     }
 
     return (
-        <div className="min-h-screen bg-black text-white">
+        <div className="min-h-screen bg-[#020817] text-white">
 
-            {/* ── Desktop Sidebar ── */}
-            <aside className="fixed left-0 top-0 hidden h-full w-64 border-r border-white/10 bg-black p-6 lg:flex lg:flex-col">
-                <div className="mb-8 flex items-center gap-2 text-xl font-bold text-white">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600">
-                        <LayoutDashboard className="h-5 w-5" />
-                    </div>
-                    Dashboard
-                </div>
+            {/* ── Top Navbar ── */}
+            <header className="sticky top-0 z-40 border-b border-blue-500/10 bg-[#020817]/95 backdrop-blur-xl">
+                <div className="mx-auto flex items-center justify-between px-4 py-3 sm:px-6">
 
-                <nav className="space-y-2">
-                    <button className="flex w-full items-center gap-3 rounded-lg bg-white/10 px-4 py-2 text-white">
-                        <LayoutDashboard className="h-5 w-5" />
-                        Stock Watchlist
-                    </button>
-                    <button className="flex w-full items-center gap-3 rounded-lg px-4 py-2 text-gray-400 hover:bg-white/5 hover:text-white">
-                        <Bell className="h-5 w-5" />
-                        Alert History
-                    </button>
-                </nav>
-
-                <div className="mt-auto">
-                    <div className="mb-4 rounded-lg bg-gray-900 p-4">
-                        <p className="text-xs text-gray-400">Logged in as</p>
-                        <p className="truncate text-sm font-medium text-white">{user?.email}</p>
-                    </div>
-                    <button
-                        onClick={handleSignOut}
-                        className="flex w-full items-center justify-center gap-2 rounded-lg border border-white/10 bg-transparent py-2 text-sm font-medium text-gray-400 hover:bg-white/5 hover:text-white"
-                    >
-                        <LogOut className="h-4 w-4" />
-                        Sign Out
-                    </button>
-                </div>
-            </aside>
-
-            {/* ── Mobile Top Nav ── */}
-            <header className="sticky top-0 z-40 flex items-center justify-between border-b border-white/10 bg-black/90 px-4 py-3 backdrop-blur-md lg:hidden">
-                <div className="flex items-center gap-2 text-base font-bold">
-                    <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-600">
-                        <LayoutDashboard className="h-4 w-4" />
-                    </div>
-                    Dashboard
-                </div>
-                <div className="flex items-center gap-2">
-                    <button
-                        onClick={() => {
-                            setSearchResult(null)
-                            setEditingAlert(null)
-                            setShowAddModal(true)
-                        }}
-                        className="flex items-center gap-1.5 rounded-full bg-blue-600 px-3 py-1.5 text-sm font-medium text-white"
-                    >
-                        <Plus className="h-4 w-4" />
-                        Add
-                    </button>
-                    <button
-                        onClick={() => setShowMobileMenu(!showMobileMenu)}
-                        className="rounded-lg border border-white/10 p-2 text-gray-400"
-                    >
-                        <Menu className="h-5 w-5" />
-                    </button>
-                </div>
-            </header>
-
-            {/* ── Mobile Slide-down Menu ── */}
-            {showMobileMenu && (
-                <div className="fixed inset-0 z-50 bg-black/80 lg:hidden" onClick={() => setShowMobileMenu(false)}>
-                    <div
-                        className="absolute right-0 top-0 h-full w-72 border-l border-white/10 bg-black p-6"
-                        onClick={e => e.stopPropagation()}
-                    >
-                        <div className="mb-6 flex items-center justify-between">
-                            <span className="font-bold text-white">Menu</span>
-                            <button onClick={() => setShowMobileMenu(false)} className="text-gray-400">
-                                <X className="h-5 w-5" />
-                            </button>
-                        </div>
-                        <div className="mb-6 rounded-lg bg-gray-900 p-4">
-                            <p className="text-xs text-gray-400">Logged in as</p>
-                            <p className="truncate text-sm font-medium text-white">{user?.email}</p>
-                        </div>
-                        <div className="space-y-2">
-                            <button
-                                onClick={() => { setShowSectorModal(true); setShowMobileMenu(false) }}
-                                className="flex w-full items-center gap-3 rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-white"
-                            >
-                                <FolderPlus className="h-5 w-5" />
-                                Add Sector
-                            </button>
-                            <button
-                                onClick={handleSignOut}
-                                className="flex w-full items-center gap-3 rounded-lg border border-white/10 px-4 py-3 text-red-400"
-                            >
-                                <LogOut className="h-5 w-5" />
-                                Sign Out
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* ── Main Content ── */}
-            <main className="min-h-screen p-4 lg:p-6 lg:pl-72">
-                {/* Header row */}
-                <div className="mb-6 flex flex-col gap-4">
-                    <div>
-                        <h1 className="text-xl font-bold lg:text-2xl">Stock Watchlist</h1>
-                        <p className="text-sm text-gray-400">Monitor your stocks and manage alerts.</p>
-                    </div>
-
-                    {/* Controls row — scrollable on mobile */}
-                    <div className="flex flex-wrap items-center gap-2">
-                        <select
-                            value={selectedSector}
-                            onChange={(e) => setSelectedSector(e.target.value)}
-                            className="rounded-full border border-white/10 bg-black px-3 py-2 text-sm font-medium text-white"
-                            style={{ colorScheme: 'dark' }}
+                    {/* Left: Hamburger + Logo */}
+                    <div className="flex items-center gap-3">
+                        {/* Hamburger menu */}
+                        <button
+                            onClick={() => setShowMobileMenu(!showMobileMenu)}
+                            className="rounded-lg border border-blue-500/20 bg-blue-500/5 p-2 text-blue-400 hover:bg-blue-500/10 transition-colors"
                         >
-                            <option value="" className="bg-black text-white">Portfolio Stocks</option>
-                            {sectors.map((sector) => (
-                                <option key={sector.id} value={sector.id} className="bg-black text-white">
-                                    {sector.name}
-                                </option>
-                            ))}
-                        </select>
+                            <Menu className="h-5 w-5" />
+                        </button>
 
+                        {/* Hoox Logo */}
+                        <Image
+                            src="/assets/HooxMainLogo-removebg-preview.png"
+                            alt="Hoox Logo"
+                            width={100}
+                            height={35}
+                            className="h-8 w-auto drop-shadow-lg cursor-pointer"
+                            onClick={() => router.push('/dashboard')}
+                            priority
+                        />
+                    </div>
+
+                    {/* Center: Search + Controls */}
+                    <div className="hidden md:flex items-center gap-3 flex-1 max-w-2xl mx-6">
                         <div className="flex-1 min-w-0">
                             <SearchBar onSearchResult={handleSearchResult} />
                         </div>
 
                         <button
                             onClick={() => fetchStocks(user.id)}
-                            className="flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-sm font-medium text-white hover:bg-white/10"
+                            className="flex items-center gap-1.5 rounded-full border border-blue-500/20 bg-blue-500/5 px-3 py-2 text-sm font-medium text-blue-400 hover:bg-blue-500/10 transition-colors"
                             title="Refresh"
                         >
-                            <Loader2 className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-                            <span className="hidden sm:inline">Refresh</span>
+                            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
                         </button>
 
-                        {/* Add Sector — hidden on mobile (use menu) */}
                         <button
                             onClick={() => setShowSectorModal(true)}
-                            className="hidden sm:flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-sm font-medium text-white hover:bg-white/10"
+                            className="flex items-center gap-1.5 rounded-full border border-blue-500/20 bg-blue-500/5 px-3 py-2 text-sm font-medium text-blue-400 hover:bg-blue-500/10 transition-colors"
                         >
                             <FolderPlus className="h-4 w-4" />
-                            Add Sector
+                            <span className="hidden lg:inline">Add Sector</span>
                         </button>
 
-                        {/* Add Alert — hidden on mobile (in sticky header) */}
                         <button
                             onClick={() => {
                                 setSearchResult(null)
                                 setEditingAlert(null)
                                 setShowAddModal(true)
                             }}
-                            className="hidden sm:flex items-center gap-1.5 rounded-full bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                            className="flex items-center gap-1.5 rounded-full bg-gradient-to-r from-blue-600 to-blue-500 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-blue-500/20 hover:from-blue-500 hover:to-blue-400 transition-all"
                         >
                             <Plus className="h-4 w-4" />
-                            Add Alert
+                            <span className="hidden lg:inline">Add Alert</span>
+                        </button>
+                    </div>
+
+                    {/* Right: Logout */}
+                    <div className="flex items-center gap-2">
+                        {/* Mobile add button */}
+                        <button
+                            onClick={() => {
+                                setSearchResult(null)
+                                setEditingAlert(null)
+                                setShowAddModal(true)
+                            }}
+                            className="md:hidden flex items-center gap-1.5 rounded-full bg-blue-600 px-3 py-1.5 text-sm font-medium text-white"
+                        >
+                            <Plus className="h-4 w-4" />
+                            Add
+                        </button>
+
+                        <button
+                            onClick={() => setShowLogoutConfirm(true)}
+                            className="rounded-full border border-red-500/20 bg-red-500/5 p-2 text-red-400 hover:bg-red-500/10 transition-colors"
+                            title="Logout"
+                        >
+                            <LogOut className="h-4 w-4" />
                         </button>
                     </div>
                 </div>
 
-                {/* Portfolio Analytics */}
+                {/* Mobile search bar */}
+                <div className="md:hidden px-4 pb-3">
+                    <div className="flex items-center gap-2">
+                        <div className="flex-1">
+                            <SearchBar onSearchResult={handleSearchResult} />
+                        </div>
+                        <button
+                            onClick={() => fetchStocks(user.id)}
+                            className="rounded-full border border-blue-500/20 bg-blue-500/5 p-2 text-blue-400"
+                        >
+                            <RefreshCw className="h-4 w-4" />
+                        </button>
+                    </div>
+                </div>
+            </header>
+
+            {/* ── Slide-out Navigation Menu ── */}
+            {showMobileMenu && (
+                <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm" onClick={() => setShowMobileMenu(false)}>
+                    <div
+                        className="absolute left-0 top-0 h-full w-72 border-r border-blue-500/10 bg-[#020817] p-6 shadow-2xl animate-slide-up"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        {/* Logo */}
+                        <div className="mb-8 flex items-center justify-between">
+                            <Image
+                                src="/assets/HooxMainLogo-removebg-preview.png"
+                                alt="Hoox Logo"
+                                width={100}
+                                height={35}
+                                className="h-8 w-auto"
+                            />
+                            <button onClick={() => setShowMobileMenu(false)} className="text-gray-400 hover:text-white">
+                                <X className="h-5 w-5" />
+                            </button>
+                        </div>
+
+                        {/* Navigation Links */}
+                        <nav className="space-y-2">
+                            <button
+                                onClick={() => { router.push('/dashboard'); setShowMobileMenu(false) }}
+                                className="flex w-full items-center gap-3 rounded-xl bg-blue-500/10 border border-blue-500/20 px-4 py-3 text-blue-400 font-medium"
+                            >
+                                <LayoutDashboard className="h-5 w-5" />
+                                Stock Watchlist
+                            </button>
+                            <button
+                                onClick={() => setShowMobileMenu(false)}
+                                className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-gray-400 hover:bg-blue-500/5 hover:text-blue-400 transition-colors"
+                            >
+                                <Bell className="h-5 w-5" />
+                                Alert History
+                            </button>
+                            <button
+                                onClick={() => { router.push('/prctrendtracker'); setShowMobileMenu(false) }}
+                                className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-gray-400 hover:bg-blue-500/5 hover:text-blue-400 transition-colors"
+                            >
+                                <BarChart3 className="h-5 w-5" />
+                                PrcTrendTracker
+                            </button>
+                        </nav>
+
+                        {/* Divider */}
+                        <div className="my-6 border-t border-blue-500/10" />
+
+                        {/* Quick Actions */}
+                        <div className="space-y-2">
+                            <button
+                                onClick={() => { setShowSectorModal(true); setShowMobileMenu(false) }}
+                                className="flex w-full items-center gap-3 rounded-xl border border-blue-500/20 bg-blue-500/5 px-4 py-3 text-blue-400 hover:bg-blue-500/10 transition-colors"
+                            >
+                                <FolderPlus className="h-5 w-5" />
+                                Add Sector
+                            </button>
+                        </div>
+
+                        {/* User info at bottom */}
+                        <div className="absolute bottom-6 left-6 right-6">
+                            <div className="rounded-xl bg-blue-500/5 border border-blue-500/10 p-4">
+                                <p className="text-xs text-gray-500">Logged in as</p>
+                                <p className="truncate text-sm font-medium text-blue-400">{user?.email}</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ── Main Content ── */}
+            <main className="min-h-screen px-4 py-6 sm:px-6">
+
+                {/* Title + Filter row */}
+                <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                        <h1 className="text-xl font-bold lg:text-2xl text-white">Stock Watchlist</h1>
+                        <p className="text-sm text-gray-500">Monitor your stocks and manage alerts.</p>
+                    </div>
+
+                    <select
+                        value={selectedSector}
+                        onChange={(e) => setSelectedSector(e.target.value)}
+                        className="rounded-xl border border-blue-500/20 bg-blue-500/5 px-4 py-2.5 text-sm font-medium text-blue-400 cursor-pointer hover:bg-blue-500/10 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                        style={{ colorScheme: 'dark' }}
+                    >
+                        <option value="" className="bg-[#020817] text-blue-400">Portfolio Stocks</option>
+                        {sectors.map((sector) => (
+                            <option key={sector.id} value={sector.id} className="bg-[#020817] text-blue-400">
+                                {sector.name}
+                            </option>
+                        ))}
+                    </select>
+                </div>
+
+                {/* Portfolio Analytics with Bull and Bear */}
                 {!selectedSector && allStocks.filter(s => s.is_portfolio).length > 0 && (
-                    <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-                        <div className="rounded-xl border border-white/10 bg-gradient-to-br from-blue-500/10 to-blue-600/5 p-4 backdrop-blur-md">
-                            <p className="text-xs text-gray-400 mb-1">Total Investment</p>
-                            <p className="text-lg font-bold text-white leading-tight">
-                                ₹{portfolioAnalytics.totalInvestment.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
-                            </p>
+                    <div className="mb-6 relative">
+                        {/* Bull on left */}
+                        <div className="hidden lg:block absolute -left-4 top-1/2 -translate-y-1/2 z-10">
+                            <div className="animate-float">
+                                <Image
+                                    src="/assets/bull_premium_1771778168693.png"
+                                    alt="Bull"
+                                    width={160}
+                                    height={160}
+                                    className="h-32 w-32 object-contain opacity-60 drop-shadow-2xl"
+                                />
+                            </div>
                         </div>
-                        <div className="rounded-xl border border-white/10 bg-gradient-to-br from-purple-500/10 to-purple-600/5 p-4 backdrop-blur-md">
-                            <p className="text-xs text-gray-400 mb-1">Current Value</p>
-                            <p className="text-lg font-bold text-white leading-tight">
-                                ₹{portfolioAnalytics.currentValue.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
-                            </p>
-                            {fetchingPrices && <p className="text-xs text-gray-500 mt-1">Updating...</p>}
+
+                        {/* Bear on right */}
+                        <div className="hidden lg:block absolute -right-4 top-1/2 -translate-y-1/2 z-10">
+                            <div className="animate-float-slow">
+                                <Image
+                                    src="/assets/bear_blue_premium_1771777968054.png"
+                                    alt="Bear"
+                                    width={160}
+                                    height={160}
+                                    className="h-32 w-32 object-contain opacity-60 drop-shadow-2xl"
+                                />
+                            </div>
                         </div>
-                        <div className={`rounded-xl border border-white/10 p-4 backdrop-blur-md ${portfolioAnalytics.totalGain >= 0
-                            ? 'bg-gradient-to-br from-green-500/10 to-green-600/5'
-                            : 'bg-gradient-to-br from-red-500/10 to-red-600/5'
-                            }`}>
-                            <p className="text-xs text-gray-400 mb-1">Gain / Loss</p>
-                            <p className={`text-lg font-bold leading-tight ${portfolioAnalytics.totalGain >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                {portfolioAnalytics.totalGain >= 0 ? '+' : ''}₹{portfolioAnalytics.totalGain.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
-                            </p>
-                        </div>
-                        <div className={`rounded-xl border border-white/10 p-4 backdrop-blur-md ${portfolioAnalytics.gainPercentage >= 0
-                            ? 'bg-gradient-to-br from-green-500/10 to-green-600/5'
-                            : 'bg-gradient-to-br from-red-500/10 to-red-600/5'
-                            }`}>
-                            <p className="text-xs text-gray-400 mb-1">Return %</p>
-                            <p className={`text-lg font-bold leading-tight ${portfolioAnalytics.gainPercentage >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                {portfolioAnalytics.gainPercentage >= 0 ? '+' : ''}{portfolioAnalytics.gainPercentage.toFixed(2)}%
-                            </p>
+
+                        <div className="grid grid-cols-2 gap-2 lg:grid-cols-4 lg:mx-28">
+                            <div className="rounded-xl border border-blue-500/20 bg-gradient-to-br from-blue-600/10 to-blue-700/5 p-3 backdrop-blur-md">
+                                <p className="text-[10px] text-gray-400 mb-0.5">Total Investment</p>
+                                <p className="text-base font-bold text-white leading-tight">
+                                    ₹{portfolioAnalytics.totalInvestment.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                                </p>
+                            </div>
+                            <div className="rounded-xl border border-blue-500/20 bg-gradient-to-br from-indigo-500/10 to-indigo-600/5 p-3 backdrop-blur-md">
+                                <p className="text-[10px] text-gray-400 mb-0.5">Current Value</p>
+                                <p className="text-base font-bold text-white leading-tight">
+                                    ₹{portfolioAnalytics.currentValue.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                                </p>
+                                {fetchingPrices && <p className="text-[10px] text-gray-500 mt-0.5">Updating...</p>}
+                            </div>
+                            <div className={`rounded-xl border p-3 backdrop-blur-md ${portfolioAnalytics.totalGain >= 0
+                                ? 'border-blue-400/20 bg-gradient-to-br from-blue-500/10 to-blue-600/5'
+                                : 'border-red-500/20 bg-gradient-to-br from-red-500/10 to-red-600/5'
+                                }`}>
+                                <p className="text-[10px] text-gray-400 mb-0.5">Gain / Loss</p>
+                                <p className={`text-base font-bold leading-tight ${portfolioAnalytics.totalGain >= 0 ? 'text-blue-400' : 'text-red-400'}`}>
+                                    {portfolioAnalytics.totalGain >= 0 ? '+' : ''}₹{portfolioAnalytics.totalGain.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                                </p>
+                            </div>
+                            <div className={`rounded-xl border p-3 backdrop-blur-md ${portfolioAnalytics.gainPercentage >= 0
+                                ? 'border-blue-400/20 bg-gradient-to-br from-blue-500/10 to-blue-600/5'
+                                : 'border-red-500/20 bg-gradient-to-br from-red-500/10 to-red-600/5'
+                                }`}>
+                                <p className="text-[10px] text-gray-400 mb-0.5">Return %</p>
+                                <p className={`text-base font-bold leading-tight ${portfolioAnalytics.gainPercentage >= 0 ? 'text-blue-400' : 'text-red-400'}`}>
+                                    {portfolioAnalytics.gainPercentage >= 0 ? '+' : ''}{portfolioAnalytics.gainPercentage.toFixed(2)}%
+                                </p>
+                            </div>
                         </div>
                     </div>
                 )}
 
                 {/* Search Result Preview */}
                 {searchResult && !showAddModal && (
-                    <div className="mb-6 rounded-xl border border-blue-500/30 bg-blue-500/10 p-4 relative">
+                    <div className="mb-6 rounded-xl border border-blue-500/30 bg-blue-500/10 p-4 relative animate-slide-up">
                         <button
                             onClick={() => setSearchResult(null)}
                             className="absolute top-3 right-3 text-gray-400 hover:text-white"
@@ -490,12 +582,12 @@ export default function Dashboard() {
                         </button>
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                             <div>
-                                <h3 className="text-lg font-bold">{searchResult.company_name}</h3>
-                                <p className="text-2xl font-bold mt-1">₹{searchResult.price?.toLocaleString()}</p>
+                                <h3 className="text-lg font-bold text-white">{searchResult.company_name}</h3>
+                                <p className="text-2xl font-bold mt-1 text-blue-400">₹{searchResult.price?.toLocaleString()}</p>
                             </div>
                             <button
                                 onClick={() => setShowAddModal(true)}
-                                className="self-start rounded-lg bg-blue-600 px-5 py-2 text-sm font-medium text-white hover:bg-blue-700 sm:self-auto"
+                                className="self-start rounded-xl bg-gradient-to-r from-blue-600 to-blue-500 px-5 py-2 text-sm font-medium text-white shadow-lg shadow-blue-500/20 hover:from-blue-500 hover:to-blue-400 sm:self-auto transition-all"
                             >
                                 Set Alert
                             </button>
@@ -506,9 +598,9 @@ export default function Dashboard() {
                 {/* Stock Grid */}
                 <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                     {stocks.length === 0 ? (
-                        <div className="col-span-full flex flex-col items-center justify-center rounded-2xl border border-dashed border-white/10 py-16 text-center">
-                            <div className="mb-4 rounded-full bg-white/5 p-4">
-                                <Bell className="h-8 w-8 text-gray-500" />
+                        <div className="col-span-full flex flex-col items-center justify-center rounded-2xl border border-dashed border-blue-500/10 py-16 text-center">
+                            <div className="mb-4 rounded-full bg-blue-500/5 p-4">
+                                <Bell className="h-8 w-8 text-blue-500/40" />
                             </div>
                             <h3 className="text-lg font-medium text-white">No alerts configured</h3>
                             <p className="mt-1 text-sm text-gray-400">Search for a stock above to get started.</p>
@@ -561,6 +653,14 @@ export default function Dashboard() {
                 <SectorModal
                     onClose={() => setShowSectorModal(false)}
                     onSectorAdded={() => { fetchSectors() }}
+                />
+            )}
+
+            {/* Logout Confirmation */}
+            {showLogoutConfirm && (
+                <LogoutConfirmModal
+                    onConfirm={handleSignOut}
+                    onCancel={() => setShowLogoutConfirm(false)}
                 />
             )}
         </div>
