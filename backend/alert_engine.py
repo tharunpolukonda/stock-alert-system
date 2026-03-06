@@ -146,6 +146,12 @@ class AlertEngine:
                 company_name = alert['stocks']['company_name']
                 stock_id = alert['stock_id']
                 
+                # Skip non-interested companies
+                stock_interest = alert['stocks'].get('interest', 'not-interested')
+                if stock_interest != 'interested':
+                    log.info(f"Skipping {company_name} - interest: {stock_interest}")
+                    continue
+                
                 # Scrape current price
                 log.info(f"Checking price for {company_name}")
                 scrape_result = self.scraper.scrape_stock_price(company_name)

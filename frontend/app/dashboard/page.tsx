@@ -10,7 +10,7 @@ import { SectorModal } from '@/components/SectorModal'
 import Image from 'next/image'
 import {
     Plus, LogOut, Loader2, X, FolderPlus, Menu, BarChart3,
-    RefreshCw, AlertTriangle, LayoutDashboard, Bell, TrendingUp
+    RefreshCw, AlertTriangle, LayoutDashboard, Bell, TrendingUp, BookOpen
 } from 'lucide-react'
 
 /* ── Logout Confirmation Modal ── */
@@ -88,6 +88,7 @@ export default function Dashboard() {
                         id,
                         company_name,
                         symbol,
+                        interest,
                         sector:sectors (
                             id,
                             name
@@ -112,7 +113,8 @@ export default function Dashboard() {
                     is_portfolio: alert.is_portfolio,
                     shares_count: alert.shares_count,
                     sector_id: alert.stock.sector?.id,
-                    sector_name: alert.stock.sector?.name
+                    sector_name: alert.stock.sector?.name,
+                    interest: alert.stock.interest || 'not-interested'
                 }))
                 setAllStocks(formattedStocks)
                 filterStocks(formattedStocks, selectedSector)
@@ -233,7 +235,8 @@ export default function Dashboard() {
                         company_name: stockName,
                         symbol: 'NSE',
                         current_price: alertData.baseline_price,
-                        sector_id: alertData.sector_id
+                        sector_id: alertData.sector_id,
+                        interest: alertData.interest || 'not-interested'
                     }, { onConflict: 'company_name' })
                     .select()
                     .single()
@@ -241,7 +244,10 @@ export default function Dashboard() {
                 if (stockError) throw stockError
                 stockId = stockData.id
             } else if (stockId) {
-                await supabase.from('stocks').update({ sector_id: alertData.sector_id }).eq('id', stockId)
+                await supabase.from('stocks').update({
+                    sector_id: alertData.sector_id,
+                    interest: alertData.interest || 'not-interested'
+                }).eq('id', stockId)
             }
 
             if (editingAlert) {
@@ -291,6 +297,17 @@ export default function Dashboard() {
         if (alert) {
             setEditingAlert(alert)
             setShowAddModal(true)
+        }
+    }
+
+    const handleChangeInterest = async (alertId: string, stockId: string) => {
+        try {
+            const stock = allStocks.find(s => s.id === alertId)
+            if (!stock) return
+            await supabase.from('stocks').update({ interest: 'interested' }).eq('id', stock.stock_id)
+            fetchStocks(user.id)
+        } catch (error) {
+            console.error('Error changing interest:', error)
         }
     }
 
@@ -354,6 +371,15 @@ export default function Dashboard() {
                         >
                             <FolderPlus className="h-4 w-4" />
                             <span className="hidden lg:inline">Add Sector</span>
+                        </button>
+
+                        <button
+                            onClick={() => router.push('/journaledger')}
+                            className="flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-bold text-white shadow-lg transition-all hover:scale-105"
+                            style={{ background: 'linear-gradient(90deg, #ef4444 50%, #22c55e 50%)' }}
+                        >
+                            <BookOpen className="h-4 w-4" />
+                            <span className="hidden lg:inline">J&L</span>
                         </button>
 
                         <button
@@ -453,6 +479,13 @@ export default function Dashboard() {
                             >
                                 <BarChart3 className="h-5 w-5" />
                                 PrcTrendTracker
+                            </button>
+                            <button
+                                onClick={() => { router.push('/journaledger'); setShowMobileMenu(false) }}
+                                className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-gray-400 hover:bg-blue-500/5 hover:text-blue-400 transition-colors"
+                            >
+                                <BookOpen className="h-5 w-5" />
+                                Journal & Ledger
                             </button>
                         </nav>
 
@@ -611,6 +644,7 @@ export default function Dashboard() {
                                 key={stock.id}
                                 stock={stock}
                                 onEdit={handleEditAlert}
+                                onChangeInterest={handleChangeInterest}
                                 onDelete={async (id) => {
                                     const { error: alertError } = await supabase.from('user_alerts').delete().eq('id', id)
                                     if (!alertError && stock.stock_id) {
@@ -637,6 +671,7 @@ export default function Dashboard() {
                             initialSectorId={editingAlert?.sector_id || ''}
                             initialIsPortfolio={editingAlert?.is_portfolio || false}
                             initialSharesCount={editingAlert?.shares_count || 0}
+                            initialInterest={editingAlert?.interest || 'not-interested'}
                             onSave={handleSaveAlert}
                             onCancel={() => {
                                 setShowAddModal(false)

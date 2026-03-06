@@ -12,6 +12,7 @@ interface AlertFormProps {
     initialSectorId?: string
     initialIsPortfolio?: boolean
     initialSharesCount?: number
+    initialInterest?: 'interested' | 'not-interested'
     onSave: (data: any) => Promise<void>
     onCancel: () => void
 }
@@ -25,6 +26,7 @@ export function AlertForm({
     initialSectorId = '',
     initialIsPortfolio = false,
     initialSharesCount = 0,
+    initialInterest = 'not-interested',
     onSave,
     onCancel
 }: AlertFormProps) {
@@ -34,6 +36,7 @@ export function AlertForm({
     const [sectorId, setSectorId] = useState(initialSectorId)
     const [isPortfolio, setIsPortfolio] = useState(initialIsPortfolio)
     const [sharesCount, setSharesCount] = useState(initialSharesCount)
+    const [interest, setInterest] = useState<'interested' | 'not-interested'>(initialIsPortfolio ? 'interested' : initialInterest)
     const [loading, setLoading] = useState(false)
     const [sectors, setSectors] = useState<any[]>([])
     const supabase = createClient()
@@ -89,7 +92,8 @@ export function AlertForm({
                 loss_threshold_percent: loss,
                 sector_id: sectorId,
                 is_portfolio: isPortfolio,
-                shares_count: isPortfolio ? sharesCount : null
+                shares_count: isPortfolio ? sharesCount : null,
+                interest: isPortfolio ? 'interested' : interest
             })
         } finally {
             setLoading(false)
@@ -199,12 +203,43 @@ export function AlertForm({
                             type="radio"
                             name="portfolio"
                             checked={isPortfolio}
-                            onChange={() => setIsPortfolio(true)}
+                            onChange={() => { setIsPortfolio(true); setInterest('interested') }}
                             className="h-4 w-4 text-blue-600"
                         />
                         <span className="text-sm text-gray-300">Yes</span>
                     </label>
                 </div>
+            </div>
+
+            <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-300">Interest</label>
+                <div className="flex items-center gap-4">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                            type="radio"
+                            name="interest"
+                            checked={interest === 'not-interested'}
+                            onChange={() => setInterest('not-interested')}
+                            className="h-4 w-4 text-gray-400"
+                            disabled={isPortfolio}
+                        />
+                        <span className={`text-sm ${isPortfolio ? 'text-gray-500' : 'text-gray-300'}`}>Not-Interested</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                            type="radio"
+                            name="interest"
+                            checked={interest === 'interested'}
+                            onChange={() => setInterest('interested')}
+                            className="h-4 w-4 text-blue-600"
+                            disabled={isPortfolio}
+                        />
+                        <span className={`text-sm ${isPortfolio ? 'text-gray-500' : 'text-gray-300'}`}>Interested</span>
+                    </label>
+                </div>
+                {isPortfolio && (
+                    <p className="text-xs text-blue-400/70">Portfolio stocks are always marked as Interested.</p>
+                )}
             </div>
 
             {isPortfolio && (

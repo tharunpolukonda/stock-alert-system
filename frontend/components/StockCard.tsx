@@ -8,6 +8,7 @@ import { RatiosModal } from '@/components/RatiosModal'
 interface StockCardProps {
     stock: {
         id: string
+        stock_id?: string
         company_name: string
         symbol: string
         current_price?: number
@@ -18,9 +19,11 @@ interface StockCardProps {
         is_portfolio?: boolean
         shares_count?: number
         sector_name?: string
+        interest?: 'interested' | 'not-interested'
     }
     onDelete?: (id: string) => void
     onEdit?: (id: string) => void
+    onChangeInterest?: (id: string, stockId: string) => void
 }
 
 /** Inline confirmation popup for destructive delete action */
@@ -75,11 +78,12 @@ function DeleteConfirmModal({
     )
 }
 
-export function StockCard({ stock, onDelete, onEdit }: StockCardProps) {
+export function StockCard({ stock, onDelete, onEdit, onChangeInterest }: StockCardProps) {
     const [loadingPrice, setLoadingPrice] = useState(false)
     const [livePrice, setLivePrice] = useState<number | null>(null)
     const [showRatios, setShowRatios] = useState(false)
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+    const [showInterestConfirm, setShowInterestConfirm] = useState(false)
 
     const baselinePrice = stock.current_price || 0
 
@@ -114,9 +118,17 @@ export function StockCard({ stock, onDelete, onEdit }: StockCardProps) {
 
     const cmp = livePrice ?? baselinePrice
 
+    const isInterested = stock.interest === 'interested' || stock.is_portfolio
+    const cardBorderClass = isInterested
+        ? 'border-blue-500/20 hover:border-blue-500/30'
+        : 'border-gray-500/20 hover:border-gray-500/30'
+    const cardBgClass = isInterested
+        ? 'bg-white/5 hover:bg-white/10'
+        : 'bg-gray-900/40 hover:bg-gray-900/60'
+
     return (
         <>
-            <div className="relative overflow-hidden rounded-xl border border-white/10 bg-white/5 p-5 backdrop-blur-lg transition-all hover:border-white/20 hover:bg-white/10">
+            <div className={`relative overflow-hidden rounded-xl border ${cardBorderClass} ${cardBgClass} p-5 backdrop-blur-lg transition-all`}>
 
                 {/* Action buttons */}
                 <div className="absolute top-3 right-3 flex gap-1.5">
@@ -139,10 +151,20 @@ export function StockCard({ stock, onDelete, onEdit }: StockCardProps) {
                 {/* Stock name + badges */}
                 <div className="pr-16">
                     <div className="flex flex-wrap items-center gap-1.5 mb-0.5">
-                        <h3 className="text-base font-semibold text-white leading-tight">{stock.company_name}</h3>
+                        <h3 className={`text-base font-semibold leading-tight ${isInterested ? 'text-white' : 'text-gray-400'}`}>{stock.company_name}</h3>
                         {stock.is_portfolio && (
                             <span className="rounded-full bg-blue-500/20 px-2 py-0.5 text-xs font-medium text-blue-400">
                                 Portfolio
+                            </span>
+                        )}
+                        {isInterested && !stock.is_portfolio && (
+                            <span className="rounded-full bg-blue-500/15 px-2 py-0.5 text-xs font-medium text-blue-300">
+                                Interested
+                            </span>
+                        )}
+                        {!isInterested && (
+                            <span className="rounded-full bg-gray-500/20 px-2 py-0.5 text-xs font-medium text-gray-400">
+                                Not-Interested
                             </span>
                         )}
                     </div>
@@ -201,14 +223,22 @@ export function StockCard({ stock, onDelete, onEdit }: StockCardProps) {
                 </div>
 
                 {/* Other Ratios button */}
-                <div className="mt-3 border-t border-white/5 pt-3">
+                <div className="mt-3 border-t border-white/5 pt-3 flex gap-2">
                     <button
                         onClick={() => setShowRatios(true)}
-                        className="flex w-full items-center justify-center gap-2 rounded-lg bg-purple-600/15 px-3 py-2 text-xs font-medium text-purple-400 hover:bg-purple-600/25 active:bg-purple-600/35 transition-colors"
+                        className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-purple-600/15 px-3 py-2 text-xs font-medium text-purple-400 hover:bg-purple-600/25 active:bg-purple-600/35 transition-colors"
                     >
                         <BarChart3 className="h-3.5 w-3.5" />
                         Other Ratios
                     </button>
+                    {!isInterested && onChangeInterest && (
+                        <button
+                            onClick={() => setShowInterestConfirm(true)}
+                            className="flex items-center justify-center gap-1.5 rounded-lg bg-blue-600/15 px-3 py-2 text-xs font-medium text-blue-400 hover:bg-blue-600/25 active:bg-blue-600/35 transition-colors"
+                        >
+                            Chng2Interested
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -228,6 +258,46 @@ export function StockCard({ stock, onDelete, onEdit }: StockCardProps) {
                     cmp={cmp}
                     onClose={() => setShowRatios(false)}
                 />
+            )}
+
+            {/* Change to Interested Confirmation */}
+            {showInterestConfirm && (
+                <div
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4"
+                    onClick={() => setShowInterestConfirm(false)}
+                >
+                    <div
+                        className="w-full max-w-sm rounded-2xl border border-blue-500/30 bg-[#0d0d0d] p-6 shadow-2xl"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="flex flex-col items-center text-center mb-5">
+                            <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-blue-500/15">
+                                <TrendingUp className="h-6 w-6 text-blue-400" />
+                            </div>
+                            <h3 className="text-base font-bold text-white">Change to Interested?</h3>
+                            <p className="mt-1.5 text-sm text-gray-400">
+                                Mark <span className="font-semibold text-white">{stock.company_name}</span> as Interested? Alerts will be activated for this company.
+                            </p>
+                        </div>
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => setShowInterestConfirm(false)}
+                                className="flex-1 rounded-xl border border-white/10 bg-white/5 py-2.5 text-sm font-medium text-gray-300 hover:bg-white/10 active:bg-white/15 transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={() => {
+                                    setShowInterestConfirm(false)
+                                    onChangeInterest?.(stock.id, stock.stock_id || '')
+                                }}
+                                className="flex-1 rounded-xl bg-blue-600 py-2.5 text-sm font-bold text-white hover:bg-blue-700 active:bg-blue-800 transition-colors"
+                            >
+                                Submit
+                            </button>
+                        </div>
+                    </div>
+                </div>
             )}
         </>
     )

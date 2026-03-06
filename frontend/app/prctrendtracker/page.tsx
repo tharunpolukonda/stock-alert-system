@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import {
     Search, TrendingUp, TrendingDown, ArrowLeft, BarChart3,
     Loader2, X, ChevronDown, Briefcase, Building2, Filter,
-    Menu, LayoutDashboard, Bell, LogOut
+    Menu, LayoutDashboard, Bell, LogOut, BookOpen, AlertTriangle
 } from 'lucide-react'
 import Image from 'next/image'
 
@@ -41,6 +41,8 @@ interface StockFromDB {
     is_portfolio?: boolean
     shares_count?: number
     baseline_price?: number
+    interest?: 'interested' | 'not-interested'
+    stock_id?: string
 }
 
 /* ─────────────────── Helpers ─────────────────── */
@@ -194,6 +196,9 @@ export default function PrcTrendTracker() {
     // Navigation
     const [showNavMenu, setShowNavMenu] = useState(false)
 
+    // Interest change
+    const [interestConfirmStock, setInterestConfirmStock] = useState<StockFromDB | null>(null)
+
     /* ─── Auth ─── */
     useEffect(() => {
         const getUser = async () => {
@@ -225,6 +230,7 @@ export default function PrcTrendTracker() {
                         id,
                         company_name,
                         symbol,
+                        interest,
                         sector:sectors (
                             id,
                             name
@@ -243,6 +249,8 @@ export default function PrcTrendTracker() {
                     is_portfolio: a.is_portfolio,
                     shares_count: a.shares_count,
                     baseline_price: a.baseline_price,
+                    interest: a.stock.interest || 'not-interested',
+                    stock_id: a.stock.id,
                 }))
                 setDbStocks(formatted)
             }
@@ -482,6 +490,30 @@ export default function PrcTrendTracker() {
         router.push('/')
     }
 
+    const handleChangeInterest = async (stock: StockFromDB) => {
+        try {
+            if (!stock.stock_id) return
+            await supabase.from('stocks').update({ interest: 'interested' }).eq('id', stock.stock_id)
+            // Refresh data
+            const { data: alertData } = await supabase
+                .from('user_alerts')
+                .select(`id, baseline_price, is_portfolio, shares_count, stock:stocks (id, company_name, symbol, interest, sector:sectors (id, name))`)
+                .eq('user_id', user.id)
+            if (alertData) {
+                const formatted: StockFromDB[] = alertData.map((a: any) => ({
+                    id: a.id, company_name: a.stock.company_name, symbol: a.stock.symbol || 'NSE',
+                    sector_name: a.stock.sector?.name, sector_id: a.stock.sector?.id,
+                    is_portfolio: a.is_portfolio, shares_count: a.shares_count, baseline_price: a.baseline_price,
+                    interest: a.stock.interest || 'not-interested', stock_id: a.stock.id,
+                }))
+                setDbStocks(formatted)
+            }
+            setInterestConfirmStock(null)
+        } catch (error) {
+            console.error('Error changing interest:', error)
+        }
+    }
+
     return (
         <div className="min-h-screen bg-[#020817] text-white">
             {/* ── Header ── */}
@@ -530,6 +562,9 @@ export default function PrcTrendTracker() {
                             </button>
                             <button onClick={() => { router.push('/prctrendtracker'); setShowNavMenu(false) }} className="flex w-full items-center gap-3 rounded-xl bg-blue-500/10 border border-blue-500/20 px-4 py-3 text-blue-400 font-medium">
                                 <BarChart3 className="h-5 w-5" /> PrcTrendTracker
+                            </button>
+                            <button onClick={() => { router.push('/journaledger'); setShowNavMenu(false) }} className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-gray-400 hover:bg-blue-500/5 hover:text-blue-400 transition-colors">
+                                <BookOpen className="h-5 w-5" /> Journal & Ledger
                             </button>
                         </nav>
                         <div className="my-6 border-t border-blue-500/10" />
@@ -822,16 +857,29 @@ export default function PrcTrendTracker() {
                             return (
                                 <div
                                     key={stock.id}
-                                    className="relative overflow-hidden rounded-xl border border-white/10 bg-white/5 p-5 backdrop-blur-lg transition-all hover:border-white/20 hover:bg-white/10"
+                                    className={`relative overflow-hidden rounded-xl border p-5 backdrop-blur-lg transition-all ${(stock.interest === 'interested' || stock.is_portfolio)
+                                        ? 'border-blue-500/20 bg-white/5 hover:border-blue-500/30 hover:bg-white/10'
+                                        : 'border-gray-500/20 bg-gray-900/40 hover:border-gray-500/30 hover:bg-gray-900/60'
+                                        }`}
                                 >
                                     {/* Stock info */}
                                     <div className="flex items-start justify-between mb-3">
                                         <div>
                                             <div className="flex items-center gap-2 mb-0.5">
-                                                <h3 className="text-base font-semibold text-white">{stock.company_name}</h3>
+                                                <h3 className={`text-base font-semibold ${(stock.interest === 'interested' || stock.is_portfolio) ? 'text-white' : 'text-gray-400'}`}>{stock.company_name}</h3>
                                                 {stock.is_portfolio && (
                                                     <span className="rounded-full bg-green-500/20 px-2 py-0.5 text-xs font-medium text-green-400">
                                                         Portfolio
+                                                    </span>
+                                                )}
+                                                {stock.interest === 'interested' && !stock.is_portfolio && (
+                                                    <span className="rounded-full bg-blue-500/15 px-2 py-0.5 text-xs font-medium text-blue-300">
+                                                        Interested
+                                                    </span>
+                                                )}
+                                                {stock.interest !== 'interested' && !stock.is_portfolio && (
+                                                    <span className="rounded-full bg-gray-500/20 px-2 py-0.5 text-xs font-medium text-gray-400">
+                                                        Not-Interested
                                                     </span>
                                                 )}
                                             </div>
@@ -884,7 +932,7 @@ export default function PrcTrendTracker() {
                                         </div>
                                     )}
 
-                                    {/* Trend buttons */}
+                                    {/* Trend buttons + Chng2Interested */}
                                     <div className="flex gap-2 border-t border-white/5 pt-3">
                                         <button
                                             onClick={() => fetchTrendForStock(stock.company_name, '1Y')}
@@ -902,6 +950,14 @@ export default function PrcTrendTracker() {
                                             <BarChart3 className="h-3 w-3" />
                                             3Y-3M Trend
                                         </button>
+                                        {stock.interest !== 'interested' && !stock.is_portfolio && (
+                                            <button
+                                                onClick={() => setInterestConfirmStock(stock)}
+                                                className="flex items-center justify-center gap-1 rounded-lg bg-blue-600/15 px-2 py-2 text-xs font-medium text-blue-400 hover:bg-blue-600/25 transition-colors"
+                                            >
+                                                Chng2Interested
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
                             )
@@ -1005,6 +1061,43 @@ export default function PrcTrendTracker() {
                                     <p className="text-gray-400">No trend data available</p>
                                 </div>
                             )}
+                    </div>
+                </div>
+            )}
+
+            {/* ── Interest Change Confirmation ── */}
+            {interestConfirmStock && (
+                <div
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4"
+                    onClick={() => setInterestConfirmStock(null)}
+                >
+                    <div
+                        className="w-full max-w-sm rounded-2xl border border-blue-500/30 bg-[#0d0d0d] p-6 shadow-2xl"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="flex flex-col items-center text-center mb-5">
+                            <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-blue-500/15">
+                                <TrendingUp className="h-6 w-6 text-blue-400" />
+                            </div>
+                            <h3 className="text-base font-bold text-white">Change to Interested?</h3>
+                            <p className="mt-1.5 text-sm text-gray-400">
+                                Mark <span className="font-semibold text-white">{interestConfirmStock.company_name}</span> as Interested? Alerts will be activated for this company.
+                            </p>
+                        </div>
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => setInterestConfirmStock(null)}
+                                className="flex-1 rounded-xl border border-white/10 bg-white/5 py-2.5 text-sm font-medium text-gray-300 hover:bg-white/10 transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={() => handleChangeInterest(interestConfirmStock)}
+                                className="flex-1 rounded-xl bg-blue-600 py-2.5 text-sm font-bold text-white hover:bg-blue-700 transition-colors"
+                            >
+                                Submit
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
