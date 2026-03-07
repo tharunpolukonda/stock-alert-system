@@ -10,7 +10,7 @@ import { SectorModal } from '@/components/SectorModal'
 import Image from 'next/image'
 import {
     Plus, LogOut, Loader2, X, FolderPlus, Menu, BarChart3,
-    RefreshCw, AlertTriangle, LayoutDashboard, Bell, TrendingUp, BookOpen
+    RefreshCw, AlertTriangle, LayoutDashboard, Bell, TrendingUp, TrendingDown, BookOpen
 } from 'lucide-react'
 
 /* ── Logout Confirmation Modal ── */
@@ -56,6 +56,14 @@ export default function Dashboard() {
     })
     const [fetchingPrices, setFetchingPrices] = useState(false)
 
+    // Profit/Loss Booked
+    const [profitBooked, setProfitBooked] = useState(0)
+    const [lossBooked, setLossBooked] = useState(0)
+    const [profitDetails, setProfitDetails] = useState<{ company_name: string; amount: number }[]>([])
+    const [lossDetails, setLossDetails] = useState<{ company_name: string; amount: number }[]>([])
+    const [showProfitPopup, setShowProfitPopup] = useState(false)
+    const [showLossPopup, setShowLossPopup] = useState(false)
+
     const supabase = createClient()
     const router = useRouter()
 
@@ -71,6 +79,44 @@ export default function Dashboard() {
         }
         getUser()
     }, [supabase, router])
+
+    /* ─── Fetch Profit/Loss Booked ─── */
+    const fetchProfitLoss = async (userId: string) => {
+        try {
+            const { data } = await supabase
+                .from('journal_ledger_history')
+                .select('profit_loss, stocks(company_name)')
+                .eq('user_id', userId)
+                .eq('transaction_type', 'sell')
+            if (data) {
+                const profitMap = new Map<string, number>()
+                const lossMap = new Map<string, number>()
+                let totalProfit = 0
+                let totalLoss = 0
+                data.forEach((t: any) => {
+                    const name = t.stocks?.company_name || 'Unknown'
+                    const pl = t.profit_loss || 0
+                    if (pl > 0) {
+                        totalProfit += pl
+                        profitMap.set(name, (profitMap.get(name) || 0) + pl)
+                    } else if (pl < 0) {
+                        totalLoss += Math.abs(pl)
+                        lossMap.set(name, (lossMap.get(name) || 0) + Math.abs(pl))
+                    }
+                })
+                setProfitBooked(totalProfit)
+                setLossBooked(totalLoss)
+                setProfitDetails(Array.from(profitMap.entries()).map(([company_name, amount]) => ({ company_name, amount })))
+                setLossDetails(Array.from(lossMap.entries()).map(([company_name, amount]) => ({ company_name, amount })))
+            }
+        } catch (error) {
+            console.error('Error fetching profit/loss:', error)
+        }
+    }
+
+    useEffect(() => {
+        if (user) fetchProfitLoss(user.id)
+    }, [user])
 
     const fetchStocks = async (userId: string) => {
         try {
@@ -292,10 +338,27 @@ export default function Dashboard() {
         }
     }
 
-    const handleEditAlert = (alertId: string) => {
+    const handleEditAlert = async (alertId: string) => {
         const alert = allStocks.find(s => s.id === alertId)
         if (alert) {
-            setEditingAlert(alert)
+            // Check if transaction history exists for this stock
+            let portfolioLocked = false
+            try {
+                const { data: txRecord } = await supabase
+                    .from('transaction_records')
+                    .select('is_invested_previous, no_trans_records')
+                    .eq('user_id', user.id)
+                    .eq('stock_id', alert.stock_id)
+                    .maybeSingle()
+
+                if (txRecord && (txRecord.is_invested_previous || txRecord.no_trans_records > 0)) {
+                    portfolioLocked = true
+                }
+            } catch (error) {
+                console.error('Error checking transaction records:', error)
+            }
+
+            setEditingAlert({ ...alert, portfolioEditLocked: portfolioLocked })
             setShowAddModal(true)
         }
     }
@@ -568,7 +631,7 @@ export default function Dashboard() {
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-2 lg:grid-cols-4 lg:mx-28">
+                        <div className="grid grid-cols-2 gap-2 lg:grid-cols-3 lg:mx-28">
                             <div className="rounded-xl border border-blue-500/20 bg-gradient-to-br from-blue-600/10 to-blue-700/5 p-3 backdrop-blur-md">
                                 <p className="text-[10px] text-gray-400 mb-0.5">Total Investment</p>
                                 <p className="text-base font-bold text-white leading-tight">
@@ -600,6 +663,18 @@ export default function Dashboard() {
                                     {portfolioAnalytics.gainPercentage >= 0 ? '+' : ''}{portfolioAnalytics.gainPercentage.toFixed(2)}%
                                 </p>
                             </div>
+                            <button onClick={() => setShowProfitPopup(true)} className="rounded-xl border border-green-500/20 bg-gradient-to-br from-green-500/10 to-green-600/5 p-3 backdrop-blur-md cursor-pointer hover:from-green-500/15 transition-colors text-left">
+                                <p className="text-[10px] text-gray-400 mb-0.5">Profit Booked</p>
+                                <p className="text-base font-bold leading-tight text-green-400">
+                                    +₹{profitBooked.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                                </p>
+                            </button>
+                            <button onClick={() => setShowLossPopup(true)} className="rounded-xl border border-red-500/20 bg-gradient-to-br from-red-500/10 to-red-600/5 p-3 backdrop-blur-md cursor-pointer hover:from-red-500/15 transition-colors text-left">
+                                <p className="text-[10px] text-gray-400 mb-0.5">Loss Booked</p>
+                                <p className="text-base font-bold leading-tight text-red-400">
+                                    -₹{lossBooked.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                                </p>
+                            </button>
                         </div>
                     </div>
                 )}
@@ -672,6 +747,7 @@ export default function Dashboard() {
                             initialIsPortfolio={editingAlert?.is_portfolio || false}
                             initialSharesCount={editingAlert?.shares_count || 0}
                             initialInterest={editingAlert?.interest || 'not-interested'}
+                            portfolioEditLocked={editingAlert?.portfolioEditLocked || false}
                             onSave={handleSaveAlert}
                             onCancel={() => {
                                 setShowAddModal(false)
@@ -697,6 +773,62 @@ export default function Dashboard() {
                     onConfirm={handleSignOut}
                     onCancel={() => setShowLogoutConfirm(false)}
                 />
+            )}
+
+            {/* Profit Booked Popup */}
+            {showProfitPopup && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" onClick={() => setShowProfitPopup(false)}>
+                    <div className="w-full max-w-md rounded-2xl border border-green-500/30 bg-[#0a0a0f] p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+                        <div className="flex items-center gap-3 mb-5">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green-500/15">
+                                <TrendingUp className="h-5 w-5 text-green-400" />
+                            </div>
+                            <div>
+                                <h3 className="text-base font-bold text-white">Profit Booked</h3>
+                                <p className="text-xs text-gray-400">Total: ₹{profitBooked.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</p>
+                            </div>
+                        </div>
+                        <div className="space-y-2 max-h-60 overflow-y-auto">
+                            {profitDetails.length === 0 ? (
+                                <p className="text-sm text-gray-500 text-center py-4">No profit transactions yet.</p>
+                            ) : profitDetails.map((d, i) => (
+                                <div key={i} className="flex items-center justify-between rounded-lg border border-green-500/10 bg-green-500/5 px-4 py-3">
+                                    <span className="text-sm text-white font-medium">{d.company_name}</span>
+                                    <span className="text-sm font-bold text-green-400">+₹{d.amount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                                </div>
+                            ))}
+                        </div>
+                        <button onClick={() => setShowProfitPopup(false)} className="mt-4 w-full rounded-xl border border-white/10 bg-white/5 py-2.5 text-sm font-medium text-gray-300 hover:bg-white/10 transition-colors">Close</button>
+                    </div>
+                </div>
+            )}
+
+            {/* Loss Booked Popup */}
+            {showLossPopup && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" onClick={() => setShowLossPopup(false)}>
+                    <div className="w-full max-w-md rounded-2xl border border-red-500/30 bg-[#0a0a0f] p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+                        <div className="flex items-center gap-3 mb-5">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-500/15">
+                                <TrendingDown className="h-5 w-5 text-red-400" />
+                            </div>
+                            <div>
+                                <h3 className="text-base font-bold text-white">Loss Booked</h3>
+                                <p className="text-xs text-gray-400">Total: ₹{lossBooked.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</p>
+                            </div>
+                        </div>
+                        <div className="space-y-2 max-h-60 overflow-y-auto">
+                            {lossDetails.length === 0 ? (
+                                <p className="text-sm text-gray-500 text-center py-4">No loss transactions yet.</p>
+                            ) : lossDetails.map((d, i) => (
+                                <div key={i} className="flex items-center justify-between rounded-lg border border-red-500/10 bg-red-500/5 px-4 py-3">
+                                    <span className="text-sm text-white font-medium">{d.company_name}</span>
+                                    <span className="text-sm font-bold text-red-400">-₹{d.amount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                                </div>
+                            ))}
+                        </div>
+                        <button onClick={() => setShowLossPopup(false)} className="mt-4 w-full rounded-xl border border-white/10 bg-white/5 py-2.5 text-sm font-medium text-gray-300 hover:bg-white/10 transition-colors">Close</button>
+                    </div>
+                </div>
             )}
         </div>
     )

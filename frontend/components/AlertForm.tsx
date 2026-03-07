@@ -13,6 +13,7 @@ interface AlertFormProps {
     initialIsPortfolio?: boolean
     initialSharesCount?: number
     initialInterest?: 'interested' | 'not-interested'
+    portfolioEditLocked?: boolean
     onSave: (data: any) => Promise<void>
     onCancel: () => void
 }
@@ -27,6 +28,7 @@ export function AlertForm({
     initialIsPortfolio = false,
     initialSharesCount = 0,
     initialInterest = 'not-interested',
+    portfolioEditLocked = false,
     onSave,
     onCancel
 }: AlertFormProps) {
@@ -188,27 +190,32 @@ export function AlertForm({
             <div className="space-y-2">
                 <label className="text-sm font-medium text-gray-300">Portfolio Stock</label>
                 <div className="flex items-center gap-4">
-                    <label className="flex items-center gap-2 cursor-pointer">
+                    <label className={`flex items-center gap-2 ${portfolioEditLocked ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>
                         <input
                             type="radio"
                             name="portfolio"
                             checked={!isPortfolio}
                             onChange={() => setIsPortfolio(false)}
                             className="h-4 w-4 text-blue-600"
+                            disabled={portfolioEditLocked}
                         />
                         <span className="text-sm text-gray-300">No</span>
                     </label>
-                    <label className="flex items-center gap-2 cursor-pointer">
+                    <label className={`flex items-center gap-2 ${portfolioEditLocked ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>
                         <input
                             type="radio"
                             name="portfolio"
                             checked={isPortfolio}
                             onChange={() => { setIsPortfolio(true); setInterest('interested') }}
                             className="h-4 w-4 text-blue-600"
+                            disabled={portfolioEditLocked}
                         />
                         <span className="text-sm text-gray-300">Yes</span>
                     </label>
                 </div>
+                {portfolioEditLocked && (
+                    <p className="text-xs text-amber-400/80">⚠ Cannot change portfolio status — transaction history exists for this company.</p>
+                )}
             </div>
 
             <div className="space-y-2">

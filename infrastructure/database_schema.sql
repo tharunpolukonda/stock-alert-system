@@ -124,3 +124,96 @@ create policy "Authenticated delete stocks" on public.stocks for delete to authe
 -- SECTORS POLICIES (NEW)
 create policy "Anyone can view sectors" on public.sectors for select using (auth.uid() is not null);
 create policy "Anyone can create sectors" on public.sectors for insert with check (auth.uid() is not null);
+
+
+-- 1. Add 'interest' column to the stocks table 06-03-2026
+ALTER TABLE stocks 
+ADD COLUMN interest TEXT NOT NULL DEFAULT 'not-interested' 
+CHECK (interest IN ('interested', 'not-interested'));
+
+-- 2. Set all existing portfolio stocks to 'interested'
+UPDATE stocks 
+SET interest = 'interested' 
+WHERE id IN (
+  SELECT DISTINCT stock_id FROM user_alerts WHERE is_portfolio = true
+);
+
+-- 3. Create Journal & Ledger History table
+CREATE TABLE journal_ledger_history (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  stock_id UUID NOT NULL REFERENCES stocks(id) ON DELETE CASCADE,
+  transaction_type TEXT NOT NULL CHECK (transaction_type IN ('buy', 'sell')),
+  transaction_price NUMERIC(12,2) NOT NULL,
+  num_shares INTEGER NOT NULL,
+  previous_baseline_price NUMERIC(12,2) NOT NULL,
+  updated_baseline_price NUMERIC(12,2) NOT NULL,
+  previous_shares_count INTEGER NOT NULL,
+  updated_shares_count INTEGER NOT NULL,
+  profit_loss NUMERIC(12,2) DEFAULT 0,
+  profit_loss_per_share NUMERIC(12,2) DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 4. Enable RLS on the new table
+ALTER TABLE journal_ledger_history ENABLE ROW LEVEL SECURITY;
+
+-- 5. RLS policies for journal_ledger_history
+CREATE POLICY "Users can view own journal entries" ON journal_ledger_history
+  FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert own journal entries" ON journal_ledger_history
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+-- ============================================================
+-- 6. Transaction Records Table (07-03-2026)
+-- Purpose: Track investment history per company/user for fast
+--          lookups without scanning journal_ledger_history
+-- SELECT BELOW SQL AND RUN IN SUPABASE SQL EDITOR
+-- ============================================================
+
+CREATE TABLE public.transaction_records (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  stock_id UUID NOT NULL REFERENCES public.stocks(id) ON DELETE CASCADE,
+  is_invested_previous BOOLEAN NOT NULL DEFAULT false,
+  no_trans_records INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(user_id, stock_id)
+);
+
+-- 7. Indexes for performance
+CREATE INDEX idx_transaction_records_user_stock ON public.transaction_records(user_id, stock_id);
+CREATE INDEX idx_transaction_records_invested ON public.transaction_records(user_id, is_invested_previous);
+
+-- 8. Enable RLS
+ALTER TABLE public.transaction_records ENABLE ROW LEVEL SECURITY;
+
+-- 9. RLS Policies for transaction_records
+CREATE POLICY "Users can view own transaction records"
+  ON public.transaction_records FOR SELECT
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert own transaction records"
+  ON public.transaction_records FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update own transaction records"
+  ON public.transaction_records FOR UPDATE
+  USING (auth.uid() = user_id);
+
+-- 10. Backfill from existing journal_ledger_history data
+INSERT INTO public.transaction_records (user_id, stock_id, is_invested_previous, no_trans_records)
+SELECT
+  jlh.user_id,
+  jlh.stock_id,
+  true AS is_invested_previous,
+  COUNT(*) AS no_trans_records
+FROM public.journal_ledger_history jlh
+GROUP BY jlh.user_id, jlh.stock_id
+ON CONFLICT (user_id, stock_id) DO UPDATE
+SET
+  is_invested_previous = true,
+  no_trans_records = EXCLUDED.no_trans_records,
+  updated_at = NOW();
