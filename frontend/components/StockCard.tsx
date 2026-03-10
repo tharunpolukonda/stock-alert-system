@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { TrendingUp, TrendingDown, Pencil, Trash2, Loader2, BarChart3, AlertTriangle, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { RatiosModal } from '@/components/RatiosModal'
@@ -79,6 +80,7 @@ function DeleteConfirmModal({
 }
 
 export function StockCard({ stock, onDelete, onEdit, onChangeInterest }: StockCardProps) {
+    const router = useRouter()
     const [loadingPrice, setLoadingPrice] = useState(false)
     const [livePrice, setLivePrice] = useState<number | null>(null)
     const [showRatios, setShowRatios] = useState(false)
@@ -128,19 +130,22 @@ export function StockCard({ stock, onDelete, onEdit, onChangeInterest }: StockCa
 
     return (
         <>
-            <div className={`relative overflow-hidden rounded-xl border ${cardBorderClass} ${cardBgClass} p-5 backdrop-blur-lg transition-all`}>
+            <div
+                className={`relative overflow-hidden rounded-xl border ${cardBorderClass} ${cardBgClass} p-5 backdrop-blur-lg transition-all cursor-pointer`}
+                onClick={() => router.push(`/fulldetails/${stock.id}`)}
+            >
 
                 {/* Action buttons */}
                 <div className="absolute top-3 right-3 flex gap-1.5">
                     <button
-                        onClick={() => onEdit?.(stock.id)}
+                        onClick={(e) => { e.stopPropagation(); onEdit?.(stock.id) }}
                         className="rounded-full bg-white/10 p-1.5 text-white hover:bg-white/20 active:bg-white/30"
                         title="Edit Alert"
                     >
                         <Pencil className="h-3.5 w-3.5" />
                     </button>
                     <button
-                        onClick={() => setShowDeleteConfirm(true)}
+                        onClick={(e) => { e.stopPropagation(); setShowDeleteConfirm(true) }}
                         className="rounded-full bg-red-500/10 p-1.5 text-red-400 hover:bg-red-500/20 active:bg-red-500/30"
                         title="Delete Alert"
                     >
@@ -190,7 +195,7 @@ export function StockCard({ stock, onDelete, onEdit, onChangeInterest }: StockCa
                             </span>
                         )}
                         <button
-                            onClick={handleTrackPrice}
+                            onClick={(e) => { e.stopPropagation(); handleTrackPrice() }}
                             disabled={loadingPrice}
                             className="flex items-center gap-1.5 rounded-full bg-blue-600/20 px-3 py-1.5 text-xs font-medium text-blue-400 hover:bg-blue-600/30 active:bg-blue-600/40 disabled:opacity-60"
                         >
@@ -225,7 +230,7 @@ export function StockCard({ stock, onDelete, onEdit, onChangeInterest }: StockCa
                 {/* Other Ratios button */}
                 <div className="mt-3 border-t border-white/5 pt-3 flex gap-2">
                     <button
-                        onClick={() => setShowRatios(true)}
+                        onClick={(e) => { e.stopPropagation(); setShowRatios(true) }}
                         className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-purple-600/15 px-3 py-2 text-xs font-medium text-purple-400 hover:bg-purple-600/25 active:bg-purple-600/35 transition-colors"
                     >
                         <BarChart3 className="h-3.5 w-3.5" />
@@ -233,7 +238,7 @@ export function StockCard({ stock, onDelete, onEdit, onChangeInterest }: StockCa
                     </button>
                     {!isInterested && onChangeInterest && (
                         <button
-                            onClick={() => setShowInterestConfirm(true)}
+                            onClick={(e) => { e.stopPropagation(); setShowInterestConfirm(true) }}
                             className="flex items-center justify-center gap-1.5 rounded-lg bg-blue-600/15 px-3 py-2 text-xs font-medium text-blue-400 hover:bg-blue-600/25 active:bg-blue-600/35 transition-colors"
                         >
                             Chng2Interested
