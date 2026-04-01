@@ -10,7 +10,7 @@ import { SectorModal } from '@/components/SectorModal'
 import Image from 'next/image'
 import {
     Plus, LogOut, Loader2, X, FolderPlus, Menu, BarChart3,
-    RefreshCw, AlertTriangle, LayoutDashboard, Bell, TrendingUp, TrendingDown, BookOpen
+    RefreshCw, AlertTriangle, LayoutDashboard, Bell, TrendingUp, TrendingDown, BookOpen, Newspaper
 } from 'lucide-react'
 
 /* ── Logout Confirmation Modal ── */
@@ -187,10 +187,14 @@ export default function Dashboard() {
     }
 
     const filterStocks = (stocksList: any[], sectorId: string) => {
+        // Always filter out news-polled companies from dashboard
+        const existing = stocksList.filter(s => s.interest !== 'news-polled')
         if (!sectorId) {
-            setStocks(stocksList.filter(s => s.is_portfolio))
+            setStocks(existing.filter(s => s.is_portfolio))
+        } else if (sectorId === 'all') {
+            setStocks(existing)
         } else {
-            setStocks(stocksList.filter(s => s.sector_id === sectorId))
+            setStocks(existing.filter(s => s.sector_id === sectorId))
         }
     }
 
@@ -253,6 +257,7 @@ export default function Dashboard() {
         filterStocks(allStocks, selectedSector)
         calculatePortfolioAnalytics()
     }, [selectedSector, allStocks])
+
 
     const handleSignOut = async () => {
         await supabase.auth.signOut()
@@ -414,8 +419,7 @@ export default function Dashboard() {
                         />
                     </div>
 
-                    {/* Center: Search + Controls */}
-                    <div className="hidden md:flex items-center gap-3 flex-1 max-w-2xl mx-6">
+                    <div className="hidden md:flex items-center gap-3 flex-1 max-w-4xl mx-6">
                         <div className="flex-1 min-w-0">
                             <SearchBar onSearchResult={handleSearchResult} />
                         </div>
@@ -443,6 +447,14 @@ export default function Dashboard() {
                         >
                             <BookOpen className="h-4 w-4" />
                             <span className="hidden lg:inline">J&L</span>
+                        </button>
+
+                        <button
+                            onClick={() => router.push('/polldataonce')}
+                            className="flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm font-semibold text-amber-400 shadow-lg hover:bg-amber-500/20 transition-all"
+                        >
+                            <Newspaper className="h-4 w-4" />
+                            <span className="hidden lg:inline">PollDataOnce</span>
                         </button>
 
                         <button
@@ -550,6 +562,13 @@ export default function Dashboard() {
                                 <BookOpen className="h-5 w-5" />
                                 Journal & Ledger
                             </button>
+                            <button
+                                onClick={() => { router.push('/polldataonce'); setShowMobileMenu(false) }}
+                                className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-gray-400 hover:bg-amber-500/5 hover:text-amber-400 transition-colors"
+                            >
+                                <Newspaper className="h-5 w-5" />
+                                PollDataOnce
+                            </button>
                         </nav>
 
                         {/* Divider */}
@@ -594,6 +613,7 @@ export default function Dashboard() {
                         style={{ colorScheme: 'dark' }}
                     >
                         <option value="" className="bg-[#020817] text-blue-400">Portfolio Stocks</option>
+                        <option value="all" className="bg-[#020817] text-blue-400">All Sectors</option>
                         {sectors.map((sector) => (
                             <option key={sector.id} value={sector.id} className="bg-[#020817] text-blue-400">
                                 {sector.name}

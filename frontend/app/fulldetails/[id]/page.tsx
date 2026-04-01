@@ -12,7 +12,7 @@ import {
     TrendingUp, TrendingDown, BarChart3, Building2, Info,
     BookOpen, ShoppingCart, DollarSign, History,
     AlertTriangle, Menu, LayoutDashboard, Bell, LogOut, CheckCircle2,
-    StickyNote, Plus
+    StickyNote, Plus, Newspaper, ArrowDownCircle
 } from 'lucide-react'
 
 /* ── Types ── */
@@ -138,6 +138,21 @@ export default function FullDetailsPage() {
     const [savingNotes, setSavingNotes] = useState(false)
     const [addingNotes, setAddingNotes] = useState(false)
     const [newNotesValue, setNewNotesValue] = useState('')
+
+    // Firestore News
+    const [companyNews, setCompanyNews] = useState<{ text: string; color: string; date: string; source: string }[]>([])
+
+    // Convert to News-Polled
+    const [showConvertToPolledModal, setShowConvertToPolledModal] = useState(false)
+    const [convertPolledLoading, setConvertPolledLoading] = useState(false)
+    const [convertPolledWarning, setConvertPolledWarning] = useState<{
+        totalInvested: number
+        sharesCount: number
+        isPortfolio: boolean
+        transactions: Transaction[]
+    } | null>(null)
+    const [showConvertPolledConfirm, setShowConvertPolledConfirm] = useState(false)
+    const [convertingToPolled, setConvertingToPolled] = useState(false)
 
     /* ── Auth ── */
     useEffect(() => {
@@ -387,10 +402,10 @@ export default function FullDetailsPage() {
         router.push('/')
     }
 
-    /* ── Fetch Notes from Firestore ── */
+    /* ── Fetch Notes + News from Firestore ── */
     useEffect(() => {
         if (!stock) return
-        const fetchNotes = async () => {
+        const fetchNotesAndNews = async () => {
             setNotesLoading(true)
             try {
                 const companiesRef = collection(db, 'companies')
@@ -403,19 +418,22 @@ export default function FullDetailsPage() {
                     setNotesDocId(docSnap.id)
                     setNotesContent(data.notes || '')
                     setNotesExists(true)
+                    setCompanyNews(data.news || [])
                 } else {
                     setNotesDocId(null)
                     setNotesContent('')
                     setNotesExists(false)
+                    setCompanyNews([])
                 }
             } catch (err) {
                 console.error('Error fetching notes from Firestore:', err)
                 setNotesExists(false)
+                setCompanyNews([])
             } finally {
                 setNotesLoading(false)
             }
         }
-        fetchNotes()
+        fetchNotesAndNews()
     }, [stock])
 
     /* ── Save Notes to Firestore ── */
@@ -458,6 +476,86 @@ export default function FullDetailsPage() {
             alert('Failed to add notes.')
         } finally {
             setSavingNotes(false)
+        }
+    }
+
+    /* ── Convert to News-Polled: Check eligibility ── */
+    const handleConvertToPolledClick = async () => {
+        if (!stock || !user) return
+        setConvertPolledLoading(true)
+        setConvertPolledWarning(null)
+
+        // Check conditions: is_portfolio, shares_count, total invested
+        const totalInvested = stock.baseline_price * stock.shares_count
+
+        if (stock.is_portfolio || stock.shares_count > 0 || totalInvested > 0) {
+            // Not eligible — show warning with details
+            setConvertPolledWarning({
+                totalInvested,
+                sharesCount: stock.shares_count,
+                isPortfolio: stock.is_portfolio,
+                transactions,
+            })
+            setShowConvertToPolledModal(true)
+        } else {
+            // Eligible — show confirmation
+            setShowConvertPolledConfirm(true)
+        }
+        setConvertPolledLoading(false)
+    }
+
+    /* ── Convert to News-Polled: Execute ── */
+    const handleConvertToPolled = async () => {
+        if (!stock || !user) return
+        setConvertingToPolled(true)
+        try {
+            // 1. Update stock interest to 'news-polled' in Supabase
+            await supabase.from('stocks').update({ interest: 'news-polled' }).eq('id', stock.stock_id)
+
+            // 2. Sync with polled_companies doc in Firestore (Case-Insensitive Match)
+            const cleanName = stock.company_name.trim().toLowerCase()
+            const polledRef = collection(db, 'polled_companies')
+            const allPolledSnap = await getDocs(polledRef)
+
+            let targetDocId = null
+            allPolledSnap.forEach(docSnap => {
+                const name = (docSnap.data().name || '').trim().toLowerCase()
+                if (name === cleanName) {
+                    targetDocId = docSnap.id
+                }
+            })
+
+            if (targetDocId) {
+                // Update existing document to make it visible in review candidates
+                const polledDocRef = doc(db, 'polled_companies', targetDocId)
+                await updateDoc(polledDocRef, {
+                    converted: false,
+                    convert2tracker: true
+                })
+            } else {
+                // Not found — create a new news-polled entry
+                // Try to inherit news from the main companies collection if it exists
+                const companiesRef = collection(db, 'companies')
+                const compQ = query(companiesRef, where('name', '==', stock.company_name))
+                const compSnap = await getDocs(compQ)
+                const existingNews = !compSnap.empty ? (compSnap.docs[0].data().news || []) : []
+
+                await addDoc(polledRef, {
+                    name: stock.company_name,
+                    convert2tracker: true,
+                    converted: false,
+                    news: existingNews,
+                    created_at: new Date().toLocaleDateString('en-IN'),
+                })
+            }
+
+            setShowConvertPolledConfirm(false)
+            router.push('/dashboard')
+        } catch (err: any) {
+            console.error('Error converting to news-polled:', err)
+            alert(`Error: ${err.message}`)
+        } finally {
+            setConvertingToPolled(false)
         }
     }
 
@@ -529,6 +627,9 @@ export default function FullDetailsPage() {
                             <button onClick={() => { router.push('/journaledger'); setShowNavMenu(false) }} className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-gray-400 hover:bg-blue-500/5 hover:text-blue-400 transition-colors">
                                 <BookOpen className="h-5 w-5" /> Journal & Ledger
                             </button>
+                            <button onClick={() => { router.push('/polldataonce'); setShowNavMenu(false) }} className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-gray-400 hover:bg-amber-500/5 hover:text-amber-400 transition-colors">
+                                <Newspaper className="h-5 w-5" /> PollDataOnce
+                            </button>
                         </nav>
                         <div className="my-6 border-t border-blue-500/10" />
                         <button onClick={handleSignOut} className="flex w-full items-center gap-3 rounded-xl border border-red-500/20 bg-red-500/5 px-4 py-3 text-red-400 hover:bg-red-500/10 transition-colors">
@@ -576,6 +677,11 @@ export default function FullDetailsPage() {
                             <>
                                 <button onClick={() => setEditing(true)} className="flex items-center gap-1.5 rounded-xl border border-blue-500/30 bg-blue-500/10 px-4 py-2.5 text-sm font-semibold text-blue-400 hover:bg-blue-500/20 transition-colors">
                                     <Pencil className="h-4 w-4" /> Edit
+                                </button>
+                                <button onClick={handleConvertToPolledClick} disabled={convertPolledLoading} className="flex items-center gap-1.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm font-semibold text-amber-400 hover:bg-amber-500/20 transition-colors disabled:opacity-50">
+                                    {convertPolledLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowDownCircle className="h-4 w-4" />}
+                                    <span className="hidden sm:inline">Convert2NewsPolled</span>
+                                    <span className="sm:hidden">To Polled</span>
                                 </button>
                                 <button onClick={() => setShowDeleteConfirm(true)} className="flex items-center gap-1.5 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-sm font-semibold text-red-400 hover:bg-red-500/20 transition-colors">
                                     <Trash2 className="h-4 w-4" /> Delete
@@ -935,6 +1041,63 @@ export default function FullDetailsPage() {
                     </div>
                 </div>
 
+                {/* ── News Section (Firestore) ── */}
+                {companyNews.length > 0 && (
+                    <div className="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md overflow-hidden">
+                        <div className="border-b border-white/5 px-5 py-3 flex items-center justify-between">
+                            <h2 className="text-sm font-bold text-amber-400 flex items-center gap-2">
+                                <Newspaper className="h-4 w-4" /> News ({companyNews.length})
+                            </h2>
+                            {/* Color occurrence summary */}
+                            <div className="flex flex-wrap gap-1.5">
+                                {(() => {
+                                    const counts: Record<string, number> = {}
+                                    companyNews.forEach(n => {
+                                        if (n.color !== 'grey') counts[n.color] = (counts[n.color] || 0) + 1
+                                    })
+                                    const colorMap: Record<string, { label: string; cls: string }> = {
+                                        green: { label: 'Green', cls: 'bg-green-500/15 border-green-500/30 text-green-400' },
+                                        red: { label: 'Red', cls: 'bg-red-500/15 border-red-500/30 text-red-400' },
+                                        gold: { label: 'Gold', cls: 'bg-yellow-500/15 border-yellow-500/30 text-yellow-400' },
+                                        orange: { label: 'Orange', cls: 'bg-orange-500/15 border-orange-500/30 text-orange-400' },
+                                        blue: { label: 'Blue', cls: 'bg-blue-500/15 border-blue-500/30 text-blue-400' },
+                                    }
+                                    return Object.entries(counts).map(([color, count]) => {
+                                        const cfg = colorMap[color]
+                                        if (!cfg) return null
+                                        return (
+                                            <span key={color} className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold border ${cfg.cls}`}>
+                                                {cfg.label}: {count}
+                                            </span>
+                                        )
+                                    })
+                                })()}
+                            </div>
+                        </div>
+                        <div className="p-5 space-y-2 max-h-96 overflow-y-auto">
+                            {companyNews.map((n, i) => {
+                                const colorStyles: Record<string, string> = {
+                                    green: 'bg-green-500/10 border-green-500/20 text-green-400',
+                                    red: 'bg-red-500/10 border-red-500/20 text-red-400',
+                                    gold: 'bg-yellow-500/10 border-yellow-500/20 text-yellow-400',
+                                    grey: 'bg-gray-500/10 border-gray-500/20 text-gray-400',
+                                    orange: 'bg-orange-500/10 border-orange-500/20 text-orange-400',
+                                    blue: 'bg-blue-500/10 border-blue-500/20 text-blue-400',
+                                }
+                                const style = colorStyles[n.color] || colorStyles.grey
+                                return (
+                                    <div key={i} className={`rounded-lg border px-4 py-2.5 ${style}`}>
+                                        <p className="text-xs">
+                                            <span className="text-gray-500 font-medium mr-1.5">{n.date}</span>
+                                            {n.text}
+                                        </p>
+                                    </div>
+                                )
+                            })}
+                        </div>
+                    </div>
+                )}
+
                 {/* ── Notes Section (Firestore) ── */}
                 <div className="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md overflow-hidden">
                     <div className="border-b border-white/5 px-5 py-3 flex items-center justify-between">
@@ -1047,6 +1210,103 @@ export default function FullDetailsPage() {
                     onConfirm={handleDelete}
                     onCancel={() => setShowDeleteConfirm(false)}
                 />
+            )}
+
+            {/* Convert to News-Polled — Portfolio Warning Modal */}
+            {showConvertToPolledModal && convertPolledWarning && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" onClick={() => setShowConvertToPolledModal(false)}>
+                    <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl border border-amber-500/30 bg-[#0d0d0d] p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+                        <div className="flex items-start gap-3 mb-5">
+                            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-500/15 shrink-0">
+                                <AlertTriangle className="h-6 w-6 text-amber-400" />
+                            </div>
+                            <div>
+                                <h3 className="text-base font-bold text-white">Cannot Convert — Portfolio Stock</h3>
+                                <p className="text-xs text-gray-400 mt-1">
+                                    <span className="font-semibold text-white">{stock.company_name}</span> is a portfolio stock with active holdings.
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* Portfolio Details */}
+                        <div className="grid grid-cols-3 gap-2 mb-4">
+                            <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-3 text-center">
+                                <p className="text-[10px] text-gray-400">Portfolio</p>
+                                <p className="text-sm font-bold text-blue-400">{convertPolledWarning.isPortfolio ? 'Yes' : 'No'}</p>
+                            </div>
+                            <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-center">
+                                <p className="text-[10px] text-gray-400">Shares Held</p>
+                                <p className="text-sm font-bold text-amber-400">{convertPolledWarning.sharesCount}</p>
+                            </div>
+                            <div className="rounded-xl border border-green-500/20 bg-green-500/5 p-3 text-center">
+                                <p className="text-[10px] text-gray-400">Total Invested</p>
+                                <p className="text-sm font-bold text-green-400">₹{convertPolledWarning.totalInvested.toLocaleString('en-IN')}</p>
+                            </div>
+                        </div>
+
+                        {/* Transaction History */}
+                        {convertPolledWarning.transactions.length > 0 && (
+                            <div className="mb-4">
+                                <h4 className="text-xs font-bold text-gray-300 mb-2">Transaction History</h4>
+                                <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                                    {convertPolledWarning.transactions.map(tx => (
+                                        <div key={tx.id} className={`rounded-lg border px-3 py-2 text-xs ${tx.transaction_type === 'buy' ? 'border-green-500/20 bg-green-500/5' : 'border-red-500/20 bg-red-500/5'}`}>
+                                            <div className="flex justify-between">
+                                                <span className={`font-bold ${tx.transaction_type === 'buy' ? 'text-green-400' : 'text-red-400'}`}>
+                                                    {tx.transaction_type.toUpperCase()}
+                                                </span>
+                                                <span className="text-gray-400">{new Date(tx.created_at).toLocaleDateString('en-IN')}</span>
+                                            </div>
+                                            <div className="flex justify-between mt-1">
+                                                <span className="text-gray-400">₹{tx.transaction_price.toLocaleString()} × {tx.num_shares} shares</span>
+                                                <span className={tx.profit_loss >= 0 ? 'text-green-400' : 'text-red-400'}>
+                                                    {tx.profit_loss >= 0 ? '+' : ''}₹{tx.profit_loss.toLocaleString()}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Warning Message */}
+                        <div className="rounded-xl border border-red-500/20 bg-red-500/5 px-4 py-3 mb-5">
+                            <p className="text-xs text-red-300 leading-relaxed">
+                                <strong>To convert to news-polled:</strong> Number of shares must be 0, total invested amount must be 0, and portfolio type must be set to No. Please sell all shares and update portfolio status first.
+                            </p>
+                        </div>
+
+                        <button onClick={() => setShowConvertToPolledModal(false)} className="w-full rounded-xl border border-white/10 bg-white/5 py-2.5 text-sm font-medium text-gray-300 hover:bg-white/10 transition-colors">
+                            Close
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Convert to News-Polled — Confirmation Modal */}
+            {showConvertPolledConfirm && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" onClick={() => setShowConvertPolledConfirm(false)}>
+                    <div className="w-full max-w-sm rounded-2xl border border-amber-500/30 bg-[#0d0d0d] p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+                        <div className="flex flex-col items-center text-center mb-5">
+                            <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-amber-500/15">
+                                <ArrowDownCircle className="h-6 w-6 text-amber-400" />
+                            </div>
+                            <h3 className="text-base font-bold text-white">Convert to News-Polled?</h3>
+                            <p className="mt-1.5 text-sm text-gray-400">
+                                <span className="font-semibold text-white">{stock.company_name}</span> will be moved to news-polled status. All existing data (baseline price, thresholds, sector) will be preserved — you can re-promote it later from Pending Watchlist Review.
+                            </p>
+                        </div>
+                        <div className="flex gap-3">
+                            <button onClick={() => setShowConvertPolledConfirm(false)} className="flex-1 rounded-xl border border-white/10 bg-white/5 py-2.5 text-sm font-medium text-gray-300 hover:bg-white/10 transition-colors">
+                                Cancel
+                            </button>
+                            <button onClick={handleConvertToPolled} disabled={convertingToPolled} className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-amber-600 py-2.5 text-sm font-bold text-white hover:bg-amber-700 disabled:opacity-50 transition-colors">
+                                {convertingToPolled ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowDownCircle className="h-4 w-4" />}
+                                Convert
+                            </button>
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     )

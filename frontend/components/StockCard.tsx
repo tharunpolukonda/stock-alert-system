@@ -22,6 +22,8 @@ interface StockCardProps {
         sector_name?: string
         interest?: 'interested' | 'not-interested'
     }
+    livePrice?: number | null
+    return1Day?: number | null
     onDelete?: (id: string) => void
     onEdit?: (id: string) => void
     onChangeInterest?: (id: string, stockId: string) => void
@@ -79,37 +81,84 @@ function DeleteConfirmModal({
     )
 }
 
-export function StockCard({ stock, onDelete, onEdit, onChangeInterest }: StockCardProps) {
+export function StockCard({ stock, livePrice: propLivePrice, return1Day, onDelete, onEdit, onChangeInterest }: StockCardProps) {
     const router = useRouter()
-    const [loadingPrice, setLoadingPrice] = useState(false)
-    const [livePrice, setLivePrice] = useState<number | null>(null)
     const [showRatios, setShowRatios] = useState(false)
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
     const [showInterestConfirm, setShowInterestConfirm] = useState(false)
 
     const baselinePrice = stock.current_price || 0
+    const [internalLivePrice, setInternalLivePrice] = useState<number | null>(null)
+    const [internalReturn1Day, setInternalReturn1Day] = useState<number | null>(null)
+    const [isTracking, setIsTracking] = useState(false)
+
+    const livePrice = internalLivePrice ?? propLivePrice ?? null
+    const effectiveReturn1Day = internalReturn1Day ?? return1Day ?? null
 
     const percentageChange = livePrice
         ? ((livePrice - baselinePrice) / baselinePrice) * 100
         : 0
     const isLivePositive = percentageChange >= 0
 
-    const handleTrackPrice = async () => {
-        setLoadingPrice(true)
+    const handleTrackPrice = async (e: React.MouseEvent) => {
+        e.stopPropagation()
+        setIsTracking(true)
         try {
             const apiBase = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').replace(/\/$/, '')
-            const response = await fetch(`${apiBase}/api/search`, {
+
+            // 1. Fetch current price from search API (POST)
+            const res = await fetch(`${apiBase}/api/search`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                cache: 'no-store',
                 body: JSON.stringify({ company_name: stock.company_name }),
             })
-            const result = await response.json()
-            if (result.success) setLivePrice(result.price)
-        } catch (error) {
-            console.error('Failed to track price', error)
+            const data = await res.json()
+            if (data.success && data.price) {
+                setInternalLivePrice(data.price)
+
+                // 2. Fetch historical data for Return1Day% (Multi-step Screener Flow)
+                try {
+                    // Step A: Search for slug
+                    const searchRes = await fetch(`/api/screener?action=search&q=${encodeURIComponent(stock.company_name)}`)
+                    const searchData = await searchRes.json()
+                    if (Array.isArray(searchData) && searchData.length > 0) {
+                        const url = searchData[0].url || ''
+                        const slug = url.replace(/^\/|\/$/g, '').split('/')[1] || ''
+
+                        if (slug) {
+                            // Step B: Get companyId
+                            const idRes = await fetch(`/api/screener?action=companyId&slug=${encodeURIComponent(slug)}`)
+                            const idData = await idRes.json()
+
+                            if (idData.companyId) {
+                                // Step C: Fetch chart data
+                                const chartRes = await fetch(`/api/screener?action=chart&id=${idData.companyId}&days=7`)
+                                const chartData = await chartRes.json()
+                                const datasets = chartData.datasets || chartData
+
+                                if (Array.isArray(datasets) && datasets[0]?.values) {
+                                    const priceEntries = datasets[0].values
+                                        .map((e: [string, any]) => ({ date: e[0], price: Number(e[1]) }))
+                                        .filter((e: { date: string; price: number }) => !isNaN(e.price) && e.price > 0)
+                                        .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
+
+                                    if (priceEntries.length >= 2) {
+                                        const prevClose = priceEntries[1].price
+                                        const r1d = ((data.price - prevClose) / prevClose) * 100
+                                        setInternalReturn1Day(r1d)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } catch (scrErr) {
+                    console.error('Error fetching Return1Day:', scrErr)
+                }
+            }
+        } catch (err) {
+            console.error('Error tracking price:', err)
         } finally {
-            setLoadingPrice(false)
+            setIsTracking(false)
         }
     }
 
@@ -189,23 +238,36 @@ export function StockCard({ stock, onDelete, onEdit, onChangeInterest }: StockCa
                         <div className="text-2xl font-bold text-white">₹{baselinePrice.toLocaleString()}</div>
                     </div>
                     <div className="flex flex-col items-end gap-1.5">
-                        {livePrice && (
-                            <span className={cn('text-sm font-bold', isLivePositive ? 'text-green-400' : 'text-red-400')}>
-                                ₹{livePrice.toLocaleString()}
-                            </span>
+                        {livePrice != null ? (
+                            <>
+                                <div className="flex items-center gap-1.5">
+                                    <p className="text-xs text-gray-500">CMP</p>
+                                    <span className={cn('text-sm font-bold', isLivePositive ? 'text-green-400' : 'text-red-400')}>
+                                        ₹{livePrice.toLocaleString()}
+                                    </span>
+                                </div>
+                                <span className={cn('flex items-center gap-1 text-xs font-medium', isLivePositive ? 'text-green-400' : 'text-red-400')}>
+                                    {isLivePositive ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                                    {Math.abs(percentageChange).toFixed(2)}%
+                                </span>
+                            </>
+                        ) : (
+                            <button
+                                onClick={handleTrackPrice}
+                                disabled={isTracking}
+                                className="flex items-center gap-1.5 rounded-lg bg-cyan-600/20 px-3 py-1.5 text-xs font-bold text-cyan-400 hover:bg-cyan-600/30 active:bg-cyan-600/40 transition-colors disabled:opacity-50"
+                            >
+                                {isTracking ? <Loader2 className="h-3 w-3 animate-spin" /> : <TrendingUp className="h-3 w-3" />}
+                                Track Price
+                            </button>
                         )}
-                        <button
-                            onClick={(e) => { e.stopPropagation(); handleTrackPrice() }}
-                            disabled={loadingPrice}
-                            className="flex items-center gap-1.5 rounded-full bg-blue-600/20 px-3 py-1.5 text-xs font-medium text-blue-400 hover:bg-blue-600/30 active:bg-blue-600/40 disabled:opacity-60"
-                        >
-                            {loadingPrice && <Loader2 className="h-3 w-3 animate-spin" />}
-                            {loadingPrice ? 'Tracking...' : 'Track Price'}
-                        </button>
-                        {livePrice && (
-                            <span className={cn('flex items-center gap-1 text-xs font-medium', isLivePositive ? 'text-green-400' : 'text-red-400')}>
-                                {isLivePositive ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
-                                {Math.abs(percentageChange).toFixed(2)}%
+                        {effectiveReturn1Day != null && (
+                            <span className={cn(
+                                'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold',
+                                effectiveReturn1Day >= 0 ? 'bg-green-500/15 text-green-400' : 'bg-red-500/15 text-red-400'
+                            )}>
+                                {effectiveReturn1Day >= 0 ? <TrendingUp className="h-2.5 w-2.5" /> : <TrendingDown className="h-2.5 w-2.5" />}
+                                Return1Day: {effectiveReturn1Day >= 0 ? '+' : ''}{effectiveReturn1Day.toFixed(2)}%
                             </span>
                         )}
                     </div>

@@ -217,3 +217,16 @@ SET
   is_invested_previous = true,
   no_trans_records = EXCLUDED.no_trans_records,
   updated_at = NOW();
+
+-- ============================================================
+-- 11. Update interest column CHECK constraint (01-04-2026)
+-- Purpose: Allow 'news-polled' value for Convert2NewsPolled feature
+-- SELECT BELOW SQL AND RUN IN SUPABASE SQL EDITOR
+-- ============================================================
+
+-- Drop old constraint first
+ALTER TABLE stocks DROP CONSTRAINT IF EXISTS stocks_interest_check;
+
+-- Add new constraint with 'news-polled' option
+ALTER TABLE stocks ADD CONSTRAINT stocks_interest_check
+  CHECK (interest IN ('interested', 'not-interested', 'news-polled'));

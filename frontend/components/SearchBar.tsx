@@ -47,7 +47,7 @@ export function SearchBar({ onSearchResult }: SearchBarProps) {
                         value={query}
                         onChange={(e) => setQuery(e.target.value)}
                         placeholder="Search stock..."
-                        className="w-full bg-transparent px-4 py-2.5 text-sm text-white placeholder-gray-400 focus:outline-none"
+                        className="w-full bg-transparent px-6 py-3 text-base text-white placeholder-gray-400 focus:outline-none"
                         disabled={loading}
                     />
                     <button
